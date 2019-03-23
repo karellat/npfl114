@@ -17,10 +17,10 @@ parser.add_argument("--epochs", default=10, type=int, help="Number of epochs.")
 parser.add_argument("--hidden_layer", default=200, type=int, help="Size of the hidden layer.")
 parser.add_argument("--learning_rate", default=0.01, type=float, help="Initial learning rate.")
 parser.add_argument("--learning_rate_final", default=None, type=float, help="Final learning rate.")
-parser.add_argument("--momentum", default=None, type=float, help="Momentum.")
+parser.add_argument("--momentum", default=0.0, type=float, help="Momentum.")
 parser.add_argument("--optimizer", default="SGD", type=str, help="Optimizer to use.")
 parser.add_argument("--recodex", default=False, action="store_true", help="Evaluation in ReCodEx.")
-parser.add_argument("--threads", default=1, type=int, help="Maximum number of threads to use.")
+parser.add_argument("--threads", default=1, type=int, help="Maximum number of tDecayhreads to use.")
 args = parser.parse_args()
 
 # Fix random seeds
@@ -48,11 +48,38 @@ model = tf.keras.Sequential([
     tf.keras.layers.Dense(MNIST.LABELS, activation=tf.nn.softmax),
 ])
 
+if args.decay is None:
+    learning_rate = args.learning_rate
+elif args.decay == 'polynomial':
+    learning_rate = tf.optimizers.schedules.PolynomialDecay(
+    args.learning_rate,
+    decay_steps=args.epochs * mnist.train.size / args.batch_size,
+    end_learning_rate=args.learning_rate_final)
+
+elif args.decay == 'exponential':
+    learning_rate = tf.optimizers.schedules.ExponentialDecay(
+    args.learning_rate,
+    decay_rate=args.learning_rate_final / args.learning_rate,
+    decay_steps=args.epochs * mnist.train.size / args.batch_size)
+else:
+    learning_rate = None
+
+# Optimizer
+optimizer = None
+if args.optimizer == "SGD":
+        optimizer = tf.optimizers.SGD(learning_rate=learning_rate, momentum=args.momentum)
+elif args.optimizer == "Adam":
+    optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
+
+#
+
+assert optimizer is not None
+
 # TODO: Use the required `args.optimizer` (either `SGD` or `Adam`).
 # For `SGD`, `args.momentum` can be specified. If `args.decay` is
 # not specified, pass the given `args.learning_rate` directly to the
 # optimizer as a `learning_rate` argument. If `args.decay` is set, then
-# - for `polynomial`, use `tf.keras.optimizers.schedules.PolynomialDecay`
+    # - for `polynomial`, use `tf.keras.optimizers.schedules.PolynomialDecay`
 #   using the given `args.learning_rate_final`;
 # - for `exponential`, use `tf.keras.optimizers.schedules.ExponentialDecay`
 #   and set `decay_rate` appropriately to reach `args.learning_rate_final`
@@ -63,7 +90,7 @@ model = tf.keras.Sequential([
 # so after training this value should be `args.learning_rate_final`.
 
 model.compile(
-    optimizer=None,
+    optimizer=optimizer,
     loss=tf.keras.losses.SparseCategoricalCrossentropy(),
     metrics=[tf.keras.metrics.SparseCategoricalAccuracy()],
 )
@@ -82,6 +109,7 @@ test_logs = model.evaluate(
 )
 tb_callback.on_epoch_end(1, dict(("val_test_" + metric, value) for metric, value in zip(model.metrics_names, test_logs)))
 
+accuracy = test_logs[1]
 # TODO: Write test accuracy as percentages rounded to two decimal places.
 with open("mnist_training.out", "w") as out_file:
     print("{:.2f}".format(100 * accuracy), file=out_file)
