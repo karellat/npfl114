@@ -11,14 +11,22 @@ from uppercase_data import UppercaseData
 
 # Parse arguments
 parser = argparse.ArgumentParser()
-parser.add_argument("--alphabet_size", default=None, type=int, help="If nonzero, limit alphabet to this many most frequent chars.")
-parser.add_argument("--batch_size", default=50, type=int, help="Batch size.")
+parser.add_argument("--alphabet_size", default=0, type=int, help="If nonzero, limit alphabet to this many most frequent chars.")
+parser.add_argument("--learning_rate", default=0.01, type=float, help="Initial learning rate.")
+parser.add_argument("--hidden_layer", default=200, type=int, help="Size of the hidden layer.")
+parser.add_argument("--batch_size", default=1024, type=int, help="Batch size.")
 parser.add_argument("--epochs", default=10, type=int, help="Number of epochs.")
 parser.add_argument("--hidden_layers", default="500", type=str, help="Hidden layer configuration.")
 parser.add_argument("--threads", default=1, type=int, help="Maximum number of threads to use.")
-parser.add_argument("--window", default=None, type=int, help="Window size to use.")
+parser.add_argument("--window", default=10, type=int, help="Window size to use.")
 args = parser.parse_args()
 args.hidden_layers = [int(hidden_layer) for hidden_layer in args.hidden_layers.split(",") if hidden_layer]
+
+args.logdir = os.path.join("logs", "{}-{}-{}".format(
+    os.path.basename(__file__),
+    datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
+    ",".join(("{}={}".format(re.sub("(.)[^_]*_?", r"\1", key), value) for key, value in sorted(vars(args).items())))
+))
 
 # Fix random seeds
 np.random.seed(42)
@@ -26,15 +34,43 @@ tf.random.set_seed(42)
 tf.config.threading.set_inter_op_parallelism_threads(args.threads)
 tf.config.threading.set_intra_op_parallelism_threads(args.threads)
 
-# Create logdir name
-args.logdir = os.path.join("logs", "{}-{}-{}".format(
-    os.path.basename(__file__),
-    datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
-    ",".join(("{}={}".format(re.sub("(.)[^_]*_?", r"\1", key), value) for key, value in sorted(vars(args).items())))
-))
-
 # Load data
 uppercase_data = UppercaseData(args.window, args.alphabet_size)
+
+train_data = uppercase_data.train.data["windows"]
+train_labels = uppercase_data.train.data["labels"]
+batch_size = args.batch_size
+
+dev_data = uppercase_data.dev.data["windows"]
+dev_labels = uppercase_data.dev.data["labels"]
+
+
+# print(train_data.shape)
+# print(train_labels.shape)
+# print(dev_data.shape)
+# print(dev_labels.shape) 
+# print(batch_size)
+
+inputs = tf.keras.layers.Input(shape=(2 * args.window + 1), dtype=tf.int32)
+encoded = tf.one_hot(inputs, len(uppercase_data.train.alphabet))
+flattened = tf.keras.layers.Flatten()(encoded)
+outputs = tf.keras.layers.Dense(1, activation=tf.nn.softmax)(flattened)
+model = tf.keras.Model(inputs=inputs, outputs=outputs) 
+
+print(inputs.shape)
+model.compile(
+        optimizer=tf.optimizers.Adam(learning_rate=args.learning_rate),
+        loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
+        metrics=[tf.keras.metrics.BinaryAccuracy()],
+)
+
+model.fit(
+        train_data, train_labels,
+        batch_size=batch_size,
+        epochs=args.epochs,
+        validation_data=(dev_data, dev_labels),
+)
+
 
 # TODO: Implement a suitable model, optionally including regularization, select
 # good hyperparameters and train the model.
