@@ -38,11 +38,14 @@ class Network(tf.keras.Model):
                 pass
                 # TODO: find out residual connections
             elif a.startswith('D-'):
-                pass
+                new_layer = tf.keras.layers.Dense(
+                    int(C_args[1]),
+                    activation="ReLU")
             elif a.startswith('F'):
                 new_layer = tf.keras.layers.Flatten()
             else:
                 raise Exception('Unknown cnn argument {}'.format(a)) 
+            hidden = hidden(new_layer)
         # TODO: Add CNN layers specified by `args.cnn`, which contains
         # comma-separated list of the following layers:
         # - `C-filters-kernel_size-stride-padding`: Add a convolutional layer with ReLU
