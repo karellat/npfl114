@@ -9,6 +9,40 @@ class Network(tf.keras.Model):
     def __init__(self, args):
         inputs = tf.keras.layers.Input(shape=[MNIST.H, MNIST.W, MNIST.C])
 
+        cnn_args = args.cnn.split(',')
+        for a in cnn_args:
+            C_args = a.split('-')
+            if a.startswith('C-'):
+                # TODO: change dimension of layer
+                new_layer = tf.keras.layers.Conv2D(
+                        int(C_args[1]),
+                        int(C_args[2]),
+                        str,
+                        padding=C_args[3],
+                        activation="ReLU")
+            elif a.startswith('CB-'):
+                # TODO: change dimension of layer
+                new_layer = tf.keras.layers.Conv2D(
+                        int(C_args[1]),
+                        int(C_args[2]),
+                        str,
+                        padding=C_args[3])
+                new_layer = new_layer(tf.keras.layers.BatchNormalization())
+                new_layer = new_layer(tf.keras.layers.Activation("ReLU")
+            elif a.startswith('M-'):
+               #TODO: Change dimension of layer
+               new_layer = tf.keras.layers.MaxPool2D(
+                   str, 
+                   C_args[2]) 
+            elif a.startswith('R-'):
+                pass
+                # TODO: find out residual connections
+            elif a.startswith('D-'):
+                pass
+            elif a.startswith('F'):
+                new_layer = tf.keras.layers.Flatten()
+            else:
+                raise Exception('Unknown cnn argument {}'.format(a)) 
         # TODO: Add CNN layers specified by `args.cnn`, which contains
         # comma-separated list of the following layers:
         # - `C-filters-kernel_size-stride-padding`: Add a convolutional layer with ReLU
