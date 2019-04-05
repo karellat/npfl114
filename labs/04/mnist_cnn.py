@@ -4,48 +4,69 @@ import tensorflow as tf
 
 from mnist import MNIST
 
+def get_layer(arg, inputs):
+    C_args = arg.split('-')
+    if arg.startswith('C-'):
+        return tf.keras.layers.Conv2D(
+                int(C_args[1]),
+                int(C_args[2]),
+                int(C_args[3]),
+                padding=C_args[4],
+                activation="relu")(inputs)
+    elif arg.startswith('CB-'):
+        new_layer = tf.keras.layers.Conv2D(
+                int(C_args[1]),
+                int(C_args[2]),
+                int(C_args[3]),
+                padding=C_args[4],
+                use_bias=False)(inputs)
+        new_layer = tf.keras.layers.BatchNormalization()(new_layer)
+        return tf.keras.layers.Activation("relu")(new_layer)
+    elif arg.startswith('M-'):
+       return tf.keras.layers.MaxPool2D(
+           int(C_args[1]),
+           int(C_args[2]))(inputs)
+    elif arg.startswith('R-'):
+        assert len(arg[3:-1].split(';')) != 0
+        new_layer = inputs
+        print(arg[3:-1])
+        for a in arg[3:-1].split(';'):
+            new_layer = get_layer(a, new_layer)
+        return tf.keras.layers.Add()([new_layer, inputs])
+    elif arg.startswith('D-'):
+        return tf.keras.layers.Dense(
+           int(C_args[1]),
+            activation="relu")(inputs)
+    elif arg.startswith('F'):
+        return tf.keras.layers.Flatten()(inputs)
+    else:
+        raise Exception('Unknown cnn argument {}'.format(arg))
+
 # The neural network model
 class Network(tf.keras.Model):
     def __init__(self, args):
+        # TODO: Quick fix change
+        if  args.cnn is None:
+            res_cnn_args = ""
+        else:
+            res_cnn_args = ""
+            in_brack = False
+            for c in args.cnn:
+                if c == "," and in_brack:
+                    res_cnn_args += ";"
+                elif c == "[":
+                    in_brack = True
+                    res_cnn_args += c
+                elif c == "]":
+                    in_brack = False
+                    res_cnn_args += c
+                else:
+                    res_cnn_args += c
+        print(res_cnn_args) 
         inputs = tf.keras.layers.Input(shape=[MNIST.H, MNIST.W, MNIST.C])
-
-        cnn_args = args.cnn.split(',')
-        for a in cnn_args:
-            C_args = a.split('-')
-            if a.startswith('C-'):
-                # TODO: change dimension of layer
-                new_layer = tf.keras.layers.Conv2D(
-                        int(C_args[1]),
-                        int(C_args[2]),
-                        str,
-                        padding=C_args[3],
-                        activation="ReLU")
-            elif a.startswith('CB-'):
-                # TODO: change dimension of layer
-                new_layer = tf.keras.layers.Conv2D(
-                        int(C_args[1]),
-                        int(C_args[2]),
-                        str,
-                        padding=C_args[3])
-                new_layer = new_layer(tf.keras.layers.BatchNormalization())
-                new_layer = new_layer(tf.keras.layers.Activation("ReLU")
-            elif a.startswith('M-'):
-               #TODO: Change dimension of layer
-               new_layer = tf.keras.layers.MaxPool2D(
-                   str, 
-                   C_args[2]) 
-            elif a.startswith('R-'):
-                pass
-                # TODO: find out residual connections
-            elif a.startswith('D-'):
-                new_layer = tf.keras.layers.Dense(
-                    int(C_args[1]),
-                    activation="ReLU")
-            elif a.startswith('F'):
-                new_layer = tf.keras.layers.Flatten()
-            else:
-                raise Exception('Unknown cnn argument {}'.format(a)) 
-            hidden = hidden(new_layer)
+        hidden = inputs
+        for a in res_cnn_args.split(","):
+            hidden = get_layer(a, hidden)
         # TODO: Add CNN layers specified by `args.cnn`, which contains
         # comma-separated list of the following layers:
         # - `C-filters-kernel_size-stride-padding`: Add a convolutional layer with ReLU
