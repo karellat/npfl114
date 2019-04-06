@@ -4,6 +4,44 @@ import tensorflow as tf
 
 from cifar10 import CIFAR10
 
+def get_layer(arg, inputs):
+    C_args = arg.split('-')
+    if arg.startswith('C-'):
+        return tf.keras.layers.Conv2D(
+                int(C_args[1]),
+                int(C_args[2]),
+                int(C_args[3]),
+                padding=C_args[4],
+                activation="relu")(inputs)
+    elif arg.startswith('CB-'):
+        new_layer = tf.keras.layers.Conv2D(
+                int(C_args[1]),
+                int(C_args[2]),
+                int(C_args[3]),
+                padding=C_args[4],
+                use_bias=False)(inputs)
+        new_layer = tf.keras.layers.BatchNormalization()(new_layer)
+        return tf.keras.layers.Activation("relu")(new_layer)
+    elif arg.startswith('M-'):
+       return tf.keras.layers.MaxPool2D(
+           int(C_args[1]),
+           int(C_args[2]))(inputs)
+    elif arg.startswith('R-'):
+        assert len(arg[3:-1].split(';')) != 0
+        new_layer = inputs
+        print(arg[3:-1])
+        for a in arg[3:-1].split(';'):
+            new_layer = get_layer(a, new_layer)
+        return tf.keras.layers.Add()([new_layer, inputs])
+    elif arg.startswith('D-'):
+        return tf.keras.layers.Dense(
+           int(C_args[1]),
+            activation="relu")(inputs)
+    elif arg.startswith('F'):
+        return tf.keras.layers.Flatten()(inputs)
+    else:
+        raise Exception('Unknown cnn argument {}'.format(arg))
+
 # The neural network model
 class Network(tf.keras.Model):
     def __init__(self, args):
@@ -15,9 +53,22 @@ class Network(tf.keras.Model):
         # of this constructor and add layers using `self.add`.
 
         # TODO: After creating the model, call `self.compile` with appropriate arguments.
-
+        inputs = tf.keras.layers.Input(shape=[CIFAR10.H, CIFAR10.W, CIFAR10.C])
+        hidden = inputs
+        for layer in args.cnn.split(","):
+            hidden = get_layer(layer, hidden)
+        outputs = tf.keras.layers.Dense(CIFAR10.LABELS,
+                activation=tf.nn.softmax)(hidden)
         self.tb_callback=tf.keras.callbacks.TensorBoard(args.logdir, update_freq=1000, profile_batch=1)
         self.tb_callback.on_train_end = lambda *_: None
+        super().__init__(inputs=inputs, outputs=outputs)
+
+        self.compile(
+            optimizer=tf.keras.optimizers.Adam(),
+            loss=tf.keras.losses.SparseCategoricalCrossentropy(),
+            metrics=[tf.keras.metrics.SparseCategoricalAccuracy(name="accuracy")],
+        )
+
 
     def train(self, cifar, args):
         self.fit(
@@ -37,8 +88,9 @@ if __name__ == "__main__":
     # Parse arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", default=50, type=int, help="Batch size.")
-    parser.add_argument("--epochs", default=30, type=int, help="Number of epochs.")
+    parser.add_argument("--epochs", default=1, type=int, help="Number of epochs.")
     parser.add_argument("--threads", default=1, type=int, help="Maximum number of threads to use.")
+    parser.add_argument("--cnn", default="F", type=str,help="Layer after layer architecture of the network")
     args = parser.parse_args()
 
     # Fix random seeds
