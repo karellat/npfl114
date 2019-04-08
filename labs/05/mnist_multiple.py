@@ -7,7 +7,47 @@ from mnist import MNIST
 # The neural network model
 class Network:
     def __init__(self, args):
-        # TODO: Add a `self.model` which has two inputs, both images of size [MNIST.H, MNIST.W, MNIST.C].
+        # Load data
+        mnist = MNIST()
+        # Create the model
+        inputs1 = tf.keras.layers.Input(shape=[MNIST.H, MNIST.W, MNIST.C])
+        inputs2 = tf.keras.layers.Input(shape=[MNIST.H, MNIST.W, MNIST.C])
+
+        conv_10_1 = tf.keras.layers.Conv2D(
+                filters=10,
+                kernel_size=(3,3),
+                stride=2,
+                padding="valid")(inputs1)
+
+        conv_10_2 = tf.keras.layers.Conv2D(
+                filters=10,
+                kernel_size=(3,3),
+                stride=2,
+                padding="valid")(inputs2)
+
+        conv_20_1 = tf.keras.layers.Conv2D(
+                filters=20,
+                kernel_size=(3,3),
+                stride=2,
+                padding="valid")(conv_10_1)
+        conv_20_2 = tf.keras.layers.Conv2D(
+                filters=20,
+                kernel_size=(3,3),
+                stride=2,
+                padding="valid")(conv_10_2)
+
+        flatten_1 = tf.keras.layers.Flatten()(conv_20_1)
+        flatten_2 = tf.keras.layers.Flatten()(conv_20_2)
+
+        dense_1 = tf.keras.layers.Dense(200, activation="relu")(flatten_1)
+        dense_2 = tf.keras.layers.Dense(200, activation="relu")(flatten_2)
+
+        shared_dense = tf.keras.layers.Dense(10, activation="softmax")
+        output_1 = shared_dense(dense_1)
+        output_2 = shared_dense(dense_2)
+        concat   = tf.keras.layers.Concatenate([output_1, output_2])
+        compare = tf.keras.layers.Dense(200, activation="relu")(concat)
+        output_3 = tf.keras.layers.Dense(1, activation="sigmoid")(compare)
         # It then passes each input image through the same network (with shared weights), performing
         # - convolution with 10 filters, 3x3 kernel size, stride 2, "valid" padding, ReLU activation
         # - convolution with 20 filters, 3x3 kernel size, stride 2, "valid" padding, ReLU activation
