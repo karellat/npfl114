@@ -16,12 +16,14 @@ class Network:
                 filters=10,
                 kernel_size=(3,3),
                 strides=2,
-                padding="valid")
+                padding="valid",
+                activation="relu")
         conv_20_1 = tf.keras.layers.Conv2D(
                 filters=20,
                 kernel_size=(3,3),
                 strides=2,
-                padding="valid")
+                padding="valid",
+                activation="relu")
         flatten_1 = tf.keras.layers.Flatten()
         dense_1 = tf.keras.layers.Dense(200, activation="relu")
         shared_dense = tf.keras.layers.Dense(10, activation="softmax")
@@ -92,19 +94,25 @@ class Network:
         # labels of the images.
         direct_accuracies = []
         indirect_accuracies = []
+
+        direct_accuracy = 0
+        indirect_accuracy = 0
+        n = 0
         for inputs, targets in self._prepare_batches(dataset.batches(args.batch_size)):
             test = self.model.predict(inputs)
-            pred_1 = np.argmax(test[0],axis=-1)
-            pred_2 = np.argmax(test[1],axis=-1)
-            dire   = test[2] >= 0.5
+            pred_1 = np.argmax(test[0],axis=1)
+            pred_2 = np.argmax(test[1],axis=1)
+            dire   = test[2] > 0.5
             idire  = pred_1 > pred_2
             dire  = np.reshape(dire, idire.shape)
             assert dire.shape == targets[2].shape
             assert idire.shape == targets[2].shape
-            direct_accuracies.append(np.sum(targets[2] == dire)/len(dire))
-            indirect_accuracies.append(np.sum(targets[2] == idire)/len(idire))
-        return np.mean(direct_accuracies), np.mean(indirect_accuracies)
 
+            direct_accuracy += np.sum(targets[2] == dire)
+            indirect_accuracy += np.sum(targets[2] == idire)
+            n += targets[2].shape[0]
+
+        return direct_accuracy/n, indirect_accuracy/n
 if __name__ == "__main__":
     import argparse
     import datetime
