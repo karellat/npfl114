@@ -98,8 +98,9 @@ class Network:
             pred_2 = np.argmax(test[1],axis=-1)
             dire   = test[2] >= 0.5
             idire  = pred_1 > pred_2
-            assert len(dire) == len(targets[2])
-            assert len(idire) == len(targets[2])
+            dire  = np.reshape(dire, idire.shape)
+            assert dire.shape == targets[2].shape
+            assert idire.shape == targets[2].shape
             direct_accuracies.append(np.sum(targets[2] == dire)/len(dire))
             indirect_accuracies.append(np.sum(targets[2] == idire)/len(idire))
         return np.mean(direct_accuracies), np.mean(indirect_accuracies)
@@ -113,7 +114,7 @@ if __name__ == "__main__":
     # Parse arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", default=50, type=int, help="Batch size.")
-    parser.add_argument("--epochs", default=1, type=int, help="Number of epochs.")
+    parser.add_argument("--epochs", default=10, type=int, help="Number of epochs.")
     parser.add_argument("--recodex", default=False, action="store_true", help="Evaluation in ReCodEx.")
     parser.add_argument("--threads", default=1, type=int, help="Maximum number of threads to use.")
     args = parser.parse_args()
