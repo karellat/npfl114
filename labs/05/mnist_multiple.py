@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python2
 import numpy as np
 import tensorflow as tf
 
@@ -16,24 +16,24 @@ class Network:
         conv_10_1 = tf.keras.layers.Conv2D(
                 filters=10,
                 kernel_size=(3,3),
-                stride=2,
+                strides=2,
                 padding="valid")(inputs1)
 
         conv_10_2 = tf.keras.layers.Conv2D(
                 filters=10,
                 kernel_size=(3,3),
-                stride=2,
+                strides=2,
                 padding="valid")(inputs2)
 
         conv_20_1 = tf.keras.layers.Conv2D(
                 filters=20,
                 kernel_size=(3,3),
-                stride=2,
+                strides=2,
                 padding="valid")(conv_10_1)
         conv_20_2 = tf.keras.layers.Conv2D(
                 filters=20,
                 kernel_size=(3,3),
-                stride=2,
+                strides=2,
                 padding="valid")(conv_10_2)
 
         flatten_1 = tf.keras.layers.Flatten()(conv_20_1)
@@ -45,12 +45,20 @@ class Network:
         shared_dense = tf.keras.layers.Dense(10, activation="softmax")
         output_1 = shared_dense(dense_1)
         output_2 = shared_dense(dense_2)
-        concat   = tf.keras.layers.Concatenate([output_1, output_2])
+        concat   = tf.keras.layers.Concatenate()([output_1, output_2])
         compare = tf.keras.layers.Dense(200, activation="relu")(concat)
         output_3 = tf.keras.layers.Dense(1, activation="sigmoid")(compare)
+        self.model = tf.keras.Model(inputs=[inputs1,inputs2], outputs=[output_1, output_2, output_3])
+
+        self.model.compile(
+            optimizer=tf.keras.optimizers.Adam(),
+            loss=[tf.keras.losses.SparseCategoricalCrossentropy(),
+                tf.keras.losses.SparseCategoricalCrossentropy(),
+                tf.keras.losses.BinaryCrossentropy()],
+            metrics=[tf.keras.metrics.SparseCategoricalAccuracy(name="accuracy")],)
         # It then passes each input image through the same network (with shared weights), performing
-        # - convolution with 10 filters, 3x3 kernel size, stride 2, "valid" padding, ReLU activation
-        # - convolution with 20 filters, 3x3 kernel size, stride 2, "valid" padding, ReLU activation
+        # - convolution with 10 filters, 3x3 kernel size, strides 2, "valid" padding, ReLU activation
+        # - convolution with 20 filters, 3x3 kernel size, strides 2, "valid" padding, ReLU activation
         # - flattening layer
         # - fully connected layer with 200 neurons and ReLU activation
         # obtaining a 200-dimensional feature representation of each image.
@@ -66,7 +74,6 @@ class Network:
         #
         # Train the outputs using SparseCategoricalCrossentropy for the first two inputs
         # and BinaryCrossentropy for the third one, utilizing Adam with default arguments.
-        pass
 
     @staticmethod
     def _prepare_batches(batches_generator):
@@ -74,6 +81,14 @@ class Network:
         for batch in batches_generator:
             batches.append(batch)
             if len(batches) >= 2:
+                model_inputs = [batches[0:2][0]['images'],
+                        batches[0:2][1]['images']]
+                model_targets = [
+                        batches[0:2][0]['labels'],
+                        batches[0:2][1]['labels'],
+                        batches[0:2][0]['labels'] > batches[0:2][1]['labels']
+                ]
+
                 # TODO: yield the suitable modified inputs and targets using batches[0:2]
                 yield (model_inputs, model_targets)
                 batches.clear()
@@ -81,8 +96,8 @@ class Network:
     def train(self, mnist, args):
         for epoch in range(args.epochs):
             # TODO: Train for one epoch using `model.train_on_batch` for each batch.
-            for batch in self._prepare_batches(mnist.train.batches(args.batch_size)):
-                pass
+            for inputs, targets in self._prepare_batches(mnist.train.batches(args.batch_size)):
+                self.model.train_on_batch(inputs, targets, reset_metrics=False)
 
             # Print development evaluation
             print("Dev {}: directly predicting: {:.4f}, comparing digits: {:.4f}".format(epoch + 1, *self.evaluate(mnist.dev, args)))
@@ -91,11 +106,19 @@ class Network:
         # TODO: Evaluate the given dataset, returning two accuracies, the first being
         # the direct prediction of the model, and the second computed by comparing predicted
         # labels of the images.
+        direct_accuracies = []
+        indirect_accuracies = []
         for inputs, targets in self._prepare_batches(dataset.batches(args.batch_size)):
-            pass
-
-        return direct_accuracy, indirect_accuracy
-
+            test = self.model.predict(inputs)
+            pred_1 = np.argmax(test[0],axis=-1)
+            pred_2 = np.argmax(test[1],axis=-1)
+            dire   = test[2] > 0.5
+            idire  = pred_1 > pred_2
+            assert len(dire) == len(targets[2])
+            assert len(idire) == len(targets[2])
+            direct_accuracies.append(np.sum(targets[2] == dire)/len(dire))
+            indirect_accuracies.append(np.sum(targets[2] == idire)/len(idire))
+        return np.mean(direct_accuracies), np.mean(indirect_accuracies)
 
 if __name__ == "__main__":
     import argparse
@@ -106,7 +129,7 @@ if __name__ == "__main__":
     # Parse arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", default=50, type=int, help="Batch size.")
-    parser.add_argument("--epochs", default=10, type=int, help="Number of epochs.")
+    parser.add_argument("--epochs", default=1, type=int, help="Number of epochs.")
     parser.add_argument("--recodex", default=False, action="store_true", help="Evaluation in ReCodEx.")
     parser.add_argument("--threads", default=1, type=int, help="Maximum number of threads to use.")
     args = parser.parse_args()
