@@ -14,13 +14,13 @@ class Network:
         inputs2 = tf.keras.layers.Input(shape=[MNIST.H, MNIST.W, MNIST.C])
         conv_10_1 = tf.keras.layers.Conv2D(
                 filters=10,
-                kernel_size=(3,3),
+                kernel_size=3,
                 strides=2,
                 padding="valid",
                 activation="relu")
         conv_20_1 = tf.keras.layers.Conv2D(
                 filters=20,
-                kernel_size=(3,3),
+                kernel_size=3,
                 strides=2,
                 padding="valid",
                 activation="relu")
@@ -31,7 +31,7 @@ class Network:
         hidden_1 = shared_dense(dense_1(flatten_1(conv_20_1(conv_10_1(inputs1)))))
         hidden_2 = shared_dense(dense_1(flatten_1(conv_20_1(conv_10_1(inputs2)))))
 
-        concat   = tf.keras.layers.Concatenate()([hidden_1, hidden_2])
+        concat   = tf.keras.layers.Concatenate([hidden_1, hidden_2])
         compare = tf.keras.layers.Dense(200, activation="relu")(concat)
         output_3 = tf.keras.layers.Dense(1, activation="sigmoid")(compare)
         self.model = tf.keras.Model(inputs=[inputs1,inputs2], outputs=[hidden_1, hidden_2, output_3])
