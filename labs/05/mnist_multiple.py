@@ -12,43 +12,27 @@ class Network:
         # Create the model
         inputs1 = tf.keras.layers.Input(shape=[MNIST.H, MNIST.W, MNIST.C])
         inputs2 = tf.keras.layers.Input(shape=[MNIST.H, MNIST.W, MNIST.C])
-
         conv_10_1 = tf.keras.layers.Conv2D(
                 filters=10,
                 kernel_size=(3,3),
                 strides=2,
-                padding="valid")(inputs1)
-
-        conv_10_2 = tf.keras.layers.Conv2D(
-                filters=10,
-                kernel_size=(3,3),
-                strides=2,
-                padding="valid")(inputs2)
-
+                padding="valid")
         conv_20_1 = tf.keras.layers.Conv2D(
                 filters=20,
                 kernel_size=(3,3),
                 strides=2,
-                padding="valid")(conv_10_1)
-        conv_20_2 = tf.keras.layers.Conv2D(
-                filters=20,
-                kernel_size=(3,3),
-                strides=2,
-                padding="valid")(conv_10_2)
-
-        flatten_1 = tf.keras.layers.Flatten()(conv_20_1)
-        flatten_2 = tf.keras.layers.Flatten()(conv_20_2)
-
-        dense_1 = tf.keras.layers.Dense(200, activation="relu")(flatten_1)
-        dense_2 = tf.keras.layers.Dense(200, activation="relu")(flatten_2)
-
+                padding="valid")
+        flatten_1 = tf.keras.layers.Flatten()
+        dense_1 = tf.keras.layers.Dense(200, activation="relu")
         shared_dense = tf.keras.layers.Dense(10, activation="softmax")
-        output_1 = shared_dense(dense_1)
-        output_2 = shared_dense(dense_2)
-        concat   = tf.keras.layers.Concatenate()([output_1, output_2])
+
+        hidden_1 = shared_dense(dense_1(flatten_1(conv_20_1(conv_10_1(inputs1)))))
+        hidden_2 = shared_dense(dense_1(flatten_1(conv_20_1(conv_10_1(inputs2)))))
+
+        concat   = tf.keras.layers.Concatenate()([hidden_1, hidden_2])
         compare = tf.keras.layers.Dense(200, activation="relu")(concat)
         output_3 = tf.keras.layers.Dense(1, activation="sigmoid")(compare)
-        self.model = tf.keras.Model(inputs=[inputs1,inputs2], outputs=[output_1, output_2, output_3])
+        self.model = tf.keras.Model(inputs=[inputs1,inputs2], outputs=[hidden_1, hidden_2, output_3])
 
         self.model.compile(
             optimizer=tf.keras.optimizers.Adam(),
@@ -112,7 +96,7 @@ class Network:
             test = self.model.predict(inputs)
             pred_1 = np.argmax(test[0],axis=-1)
             pred_2 = np.argmax(test[1],axis=-1)
-            dire   = test[2] > 0.5
+            dire   = test[2] >= 0.5
             idire  = pred_1 > pred_2
             assert len(dire) == len(targets[2])
             assert len(idire) == len(targets[2])
