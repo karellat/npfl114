@@ -109,6 +109,7 @@ class Network:
         raise Exception('Unknown cnn argument {}'.format(arg))
 
 
+
 import argparse
 import datetime
 import os
@@ -117,10 +118,10 @@ import re
 # Parse arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("--batch_size", default=128, type=int, help="Batch size.")
-parser.add_argument("--epochs", default=20, type=int, help="Number of epochs.")
+parser.add_argument("--epochs", default=25, type=int, help="Number of epochs.")
 parser.add_argument("--threads", default=1, type=int, help="Maximum number of threads to use.")
-parser.add_argument("--cnn", default="C-64-3-1-same,C-64-3-1-same,M-3-2,C-128-3-1-same,C-128-3-1-same,M-3-2,C-256-3-1-same,C-256-3-1-same,M-3-2",type=str, help="Shared convolution layers")
-parser.add_argument("--labels",default="F,D-256,Dr", type=str, help="Predicting labels layers")
+parser.add_argument("--cnn", default="C-64-3-1-same,C-64-3-1-same,M-3-2,C-128-3-1-same,C-128-3-1-same,M-3-2",type=str, help="Shared convolution layers")
+parser.add_argument("--labels",default="F,D-256,Dr,F,D-256,Dr", type=str, help="Predicting labels layers")
 parser.add_argument("--masks", default="", type=str, help="Predicting masks layers")
 args = parser.parse_args([])
 
