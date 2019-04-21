@@ -54,7 +54,7 @@ class Network:
         # and is also considerably faster on a CPU).
 
         if args.rnn_cell == "SimpleRNN":
-            rnn_cell = tf.keras.layers.SimpleRNNCell(args.rnn_cell_dim,
+            rnn_cell = tf.keras.layers.SimpleRNN(args.rnn_cell_dim,
                     return_sequences=True)(sequences)
         elif args.rnn_cell == "GRU":
             rnn_cell = tf.keras.layers.GRU(args.rnn_cell_dim,
@@ -70,7 +70,7 @@ class Network:
         # a ReLU-activated fully connected layer with `args.hidden_layer` units.
 
         if args.hidden_layer is not None:
-            rnn_cell = tf.keras.layers.Dense(args.hidden_layers,
+            rnn_cell = tf.keras.layers.Dense(args.hidden_layer,
             activation="relu")(rnn_cell)
 
 
@@ -105,8 +105,8 @@ class Network:
         ## If clip_gradient is defined, clip the gradient and compute `gradient_norm` using
         # `tf.clip_by_global_norm`. Otherwise, only compute the `gradient_norm` using
         # `tf.linalg.global_norm`.
-        if clip_gradient:
-            gradient_norm = tf.clip_by_global_norm(grad, clip_gradient)
+        if clip_gradient is not None:
+            grad, gradient_norm = tf.clip_by_global_norm(grad, clip_gradient)
         else:
             gradient_norm = tf.linalg.global_norm(grad)
         # Apply the gradients using the `self._optimizer`
@@ -118,7 +118,7 @@ class Network:
         # Then, use `with self._writer.as_default():` block and in the block
         # - iterate through the self._metrics
         with self._writer.as_default():
-            #TODO: delete 
+            #TODO: delete
             for k,m in self._metrics.items():
         #   - reset each metric
                 m.reset_states()
