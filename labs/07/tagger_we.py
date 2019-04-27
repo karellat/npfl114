@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+#
+# All team solutions **must** list **all** members of the team.
+# The members must be listed using their ReCodEx IDs anywhere
+# in a comment block in the source file (on a line beginning with `#`).
+#
+# You can find out ReCodEx ID in the URL bar after navigating
+# to your User profile page. The ID has the following format:
+# 310a5c89-3ea1-11e9-b0fd-00505601122b
+# 90257956-3ea2-11e9-b0fd-00505601122b
+# TODO: Janka
 import numpy as np
 import tensorflow as tf
 
