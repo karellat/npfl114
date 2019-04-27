@@ -9,16 +9,26 @@ class Network:
         # TODO: Implement a one-layer RNN network. The input
         # `word_ids` consists of a batch of sentences, each
         # a sequence of word indices. Padded words have index 0.
-
+        word_ids = tf.keras.layers.Input(shape=(None,))
         # TODO: Embed input words with dimensionality `args.we_dim`, using
         # `mask_zero=True`.
-
+        embedding = tf.keras.layers.Embedding(input_dim=num_words,
+                output_dim=args.we_dim,
+                mask_zero=True)(word_ids)
         # TODO: Create specified `args.rnn_cell` RNN cell (LSTM, GRU) with
         # dimension `args.rnn_cell_dim` and apply it in a bidirectional way on
         # the embedded words, concatenating opposite directions.
-
+        if args.rnn_cell == "LSTM":
+            rnn = tf.keras.layers.LSTM(args.rnn_cell_dim, return_sequences=True)
+        elif args.rnn_cell == "GRU":
+            rnn = tf.keras.layers.GRU(args.rnn_cell_dim, return_sequences=True)
+        else:
+            raise("There is no such a RNN layer")
+        rnn = tf.keras.layers.Bidirectional(rnn)(embedding)
         # TODO: Add a softmax classification layer into `num_tags` classes, storing
         # the outputs in `predictions`.
+        predictions = tf.keras.layers.Dense(num_tags,
+                activation="softmax")(rnn)
 
         self.model = tf.keras.Model(inputs=word_ids, outputs=predictions)
         self.model.compile(optimizer=tf.optimizers.Adam(),
@@ -29,6 +39,10 @@ class Network:
 
     def train_epoch(self, dataset, args):
         for batch in dataset.batches(args.batch_size):
+            targets =  np.expand_dims(batch[dataset.TAGS].word_ids,axis=-1)
+            metrics = self.model.train_on_batch(batch[dataset.FORMS].word_ids,
+                    y=targets,
+                    reset_metrics=True)
             # TODO: Train the given batch, using
             # - batch[dataset.FORMS].word_ids as inputs
             # - batch[dataset.TAGS].word_ids as targets. Note that generally targets
@@ -46,6 +60,10 @@ class Network:
     def evaluate(self, dataset, dataset_name, args):
         # We assume that model metric are resetted at this point.
         for batch in dataset.batches(args.batch_size):
+            targets = np.expand_dims(batch[dataset.TAGS].word_ids,axis=-1)
+            metrics = self.model.test_on_batch(batch[dataset.FORMS].word_ids,
+                    y=targets,
+                    reset_metrics=False)
             # TODO: Evaluate the given match, using the same inputs as in training.
             # Additionally, pass `reset_metrics=False` to aggregate the metrics.
             # Store the metrics of the last batch as `metrics`.
