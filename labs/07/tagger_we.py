@@ -8,7 +8,7 @@
 # to your User profile page. The ID has the following format:
 # 310a5c89-3ea1-11e9-b0fd-00505601122b
 # 90257956-3ea2-11e9-b0fd-00505601122b
-# TODO: Janka
+# 69bef76d-1ebb-11e8-9de3-00505601122b
 import numpy as np
 import tensorflow as tf
 
