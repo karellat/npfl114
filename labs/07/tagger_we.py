@@ -41,6 +41,7 @@ class Network:
                 activation="softmax")(rnn)
 
         self.model = tf.keras.Model(inputs=word_ids, outputs=predictions)
+        print(self.model.summary())
         self.model.compile(optimizer=tf.optimizers.Adam(),
                            loss=tf.losses.SparseCategoricalCrossentropy(),
                            metrics=[tf.metrics.SparseCategoricalAccuracy(name="accuracy")])
