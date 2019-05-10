@@ -80,9 +80,11 @@ class Network:
 
             class DecoderTraining(decoder.BaseDecoder):
                 @property
-                def batch_size(self): return tf.shape(self._source_states)[0] # TODO: Return the batch size of self._source_states, using tf.shape
+                def batch_size(self): return tf.shape(self._source_states)[0] 
+                # TODO: Return the batch size of self._source_states, using tf.shape
                 @property
-                def output_size(self): return self._model.target_output_layer.units # TODO: Return the number of logits per each output
+                def output_size(self): return tf.shape(self._targets[1])
+                # TODO: Return the number of logits per each output
                 @property
                 def output_dtype(self): return tf.float32 # TODO: Return the type of the logits
 
@@ -105,16 +107,13 @@ class Network:
                     # TODO: Pass `inputs` and `[states]` through self._model.target_rnn_cell, generating
                     # `outputs, [states]`.
                     outputs, [states] = self._model.target_rnn_cell(inputs, [states])
-
-                    # TODO: Overwrite `outputs` by passing them through self._model.target_output_layer,
+                    # TODO(train_batch): Overwrite `outputs` by passing them through self._model.target_output_layer,
                     outputs = self._model.target_output_layer(outputs)
-
                     # TODO: Define `next_inputs` by embedding `time`-th words from `self._targets`.
-                    next_inputs = self._model.source_embeddings(self._targets[time])
-                    
+                    next_inputs = self._model.source_embeddings(self._targets[:,time])
                     # TODO: Define `finished` as True if `time`-th word from `self._targets` is EOW, False otherwise.
                     # Again, no == or !=.
-                    finished = tf.equal(self._targets[time], MorphoDataset.Factor.EOW)
+                    finished = tf.equal(self._targets[:, time], MorphoDataset.Factor.EOW)
 
                     return outputs, states, next_inputs, finished
 
