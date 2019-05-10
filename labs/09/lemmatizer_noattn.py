@@ -120,7 +120,7 @@ class Network:
                     return outputs, states, next_inputs, finished
 
             output_layer, _, _ = DecoderTraining()([self._model, source_states, targets])
-            
+
             # TODO: Compute loss. Use only nonzero `targets` as a mask.
             loss = self._loss(targets, output_layer)
 
@@ -137,9 +137,16 @@ class Network:
 
         return tf.math.argmax(output_layer, axis=2)
 
+
     def train_epoch(self, dataset, args):
         for batch in dataset.batches(args.batch_size):
             # TODO: Call train_batch, storing results in `predictions`.
+            charseqs = batch[dataset.FORMS].charseqs
+            charseq_ids = batch[dataset.FORMS].charseq_ids
+            target_charseq_ids = batch[dataset.LEMMAS].charseq_ids
+            target_charseqs = batch[dataset.LEMMAS].charseqs
+
+            predictions = self.train_batch(charseqs, charseq_ids, target_charseqs, target_charseq_ids)
 
             form, gold_lemma, system_lemma = "", "", ""
             for i in batch[dataset.FORMS].charseqs[1]:
