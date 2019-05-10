@@ -110,7 +110,7 @@ class Network:
                     # TODO(train_batch): Overwrite `outputs` by passing them through self._model.target_output_layer,
                     outputs = self._model.target_output_layer(outputs)
                     # TODO: Define `next_inputs` by embedding `time`-th words from `self._targets`.
-                    next_inputs = self._model.source_embeddings(self._targets[:,time])
+                    next_inputs = self._model.target_embedding(self._targets[:,time])
                     # TODO: Define `finished` as True if `time`-th word from `self._targets` is EOW, False otherwise.
                     # Again, no == or !=.
                     finished = tf.equal(self._targets[:, time], MorphoDataset.Factor.EOW)
@@ -172,7 +172,7 @@ class Network:
 
         class DecoderPrediction(decoder.BaseDecoder):
             @property
-            def batch_size(self):  return (tf.shape(self._source_states)[0],) # TODO(train_batch): Return the batch size of self._source_states, using tf.shape
+            def batch_size(self):  return tf.shape(self._source_states)[0] # TODO(train_batch): Return the batch size of self._source_states, using tf.shape
             @property
             def output_size(self): return 1 # TODO: Return 1 because we are returning directly the predictions
             @property
@@ -182,11 +182,11 @@ class Network:
                 self._model, self._source_states = layer_inputs
 
                 # TODO(train_batch): Define `finished` as a vector of self.batch_size of `False` [see tf.fill].
-                finished = tf.fill(self.batch_size, False)
+                finished = tf.fill([self.batch_size], False)
 
                 # TODO(train_batch): Define `inputs` as a vector of self.batch_size of MorphoDataset.Factor.BOW [see tf.fill],
                 # embedded using self._model.target_embedding
-                inputs = self._model.target_embedding(tf.fill(self.batch_size, MorphoDataset.Factor.BOW))
+                inputs = self._model.target_embedding(tf.fill([self.batch_size], MorphoDataset.Factor.BOW))
 
                 # TODO(train_batch): Define `states` as self._source_states
                 states = self._source_states
@@ -196,7 +196,7 @@ class Network:
             def step(self, time, inputs, states):
                 # TODO(train_batch): Pass `inputs` and `[states]` through self._model.target_rnn_cell, generating
                 # `outputs, [states]`.
-                outputs, states = self._model.target_rnn_cell(inputs, states)
+                outputs, [states] = self._model.target_rnn_cell(inputs, [states])
 
                 # TODO(train_batch): Overwrite `outputs` by passing them through self._model.target_output_layer,
                 outputs = self._model.target_output_layer(outputs)
@@ -206,10 +206,10 @@ class Network:
                 outputs = tf.argmax(outputs, axis=1, output_type=tf.int32)
 
                 # TODO: Define `next_inputs` by embedding the `outputs`
-                next_inputs = self._model.source_embeddings(outputs)
+                next_inputs = self._model.target_embedding(outputs)
 
                 # TODO: Define `finished` as True if `outputs` are EOW, False otherwise. [No == or !=].
-                finished = tf.equal(self._targets[time], MorphoDataset.Factor.BOW)
+                finished = tf.equal(outputs, MorphoDataset.Factor.EOW)
 
                 return outputs, states, next_inputs, finished
 
