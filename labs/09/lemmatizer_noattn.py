@@ -83,7 +83,7 @@ class Network:
                 @property
                 def batch_size(self): return tf.shape(self._source_states)[0] # TODO: Return the batch size of self._source_states, using tf.shape
                 @property
-                def output_size(self): raise NotImplemented() # TODO: Return the number of logits per each output
+                def output_size(self): return self._model.target_embedding.input_dim # TODO: Return the number of logits per each output
                 @property
                 def output_dtype(self): return tf.dtypes.float64 # TODO: Return the type of the logits
 
@@ -91,22 +91,39 @@ class Network:
                     self._model, self._source_states, self._targets = layer_inputs
 
                     # TODO: Define `finished` as a vector of self.batch_size of `False` [see tf.fill].
+                    finished = tf.fill(self.batch_size(), False)
+                    
                     # TODO: Define `inputs` as a vector of self.batch_size of MorphoDataset.Factor.BOW [see tf.fill],
                     # embedded using self._model.target_embedding
+                    inputs = self._model.target_embedding.call(tf.fill(self.batch_size(), MorphoDataset.Factor.BOW))
+
                     # TODO: Define `states` as self._source_states
+                    states = self._source_states
+
                     return finished, inputs, states
 
                 def step(self, time, inputs, states):
                     # TODO: Pass `inputs` and `[states]` through self._model.target_rnn_cell, generating
                     # `outputs, [states]`.
+                    outputs, states = self._model.target_rnn_cell.call(inputs, states)
+
                     # TODO: Overwrite `outputs` by passing them through self._model.target_output_layer,
+                    outputs = self._model.target_output_layer.call(outputs)
+
                     # TODO: Define `next_inputs` by embedding `time`-th words from `self._targets`.
+                    next_inputs = self._model.source_embeddings.call(self._targets[time])
+
                     # TODO: Define `finished` as True if `time`-th word from `self._targets` is EOW, False otherwise.
                     # Again, no == or !=.
+                    finished = tf.equal(self._targets[time], MorphoDataset.Factor.BOW)
+
                     return outputs, states, next_inputs, finished
 
             output_layer, _, _ = DecoderTraining()([self._model, source_states, targets])
+            
             # TODO: Compute loss. Use only nonzero `targets` as a mask.
+            loss = self._loss(targets, output_layer)
+
         gradients = tape.gradient(loss, self._model.variables)
         self._optimizer.apply_gradients(zip(gradients, self._model.variables))
 
