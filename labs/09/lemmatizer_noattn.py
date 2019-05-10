@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+#
+# All team solutions **must** list **all** members of the team.
+# The members must be listed using their ReCodEx IDs anywhere
+# in a comment block in the source file (on a line beginning with `#`).
+#
+# You can find out ReCodEx ID in the URL bar after navigating
+# to your User profile page. The ID has the following format:
+# 310a5c89-3ea1-11e9-b0fd-00505601122b
+# 90257956-3ea2-11e9-b0fd-00505601122b
+# 69bef76d-1ebb-11e8-9de3-00505601122b
 import numpy as np
 import tensorflow as tf
 
@@ -144,8 +154,6 @@ class Network:
             target_charseq_ids = batch[dataset.LEMMAS].charseq_ids
             target_charseqs = batch[dataset.LEMMAS].charseqs
 
-            #def train_batch(self, source_charseq_ids, source_charseqs, target_charseq_ids, target_charseqs):
-            #print(charseq_ids.shape, charseqs.shape, target_charseq_ids.shape, target_charseqs.shape)
             predictions = self.train_batch(charseq_ids, charseqs, target_charseq_ids, target_charseqs)
 
             form, gold_lemma, system_lemma = "", "", ""
