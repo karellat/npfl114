@@ -85,7 +85,7 @@ class Network:
                 @property
                 def output_size(self): return self._model.target_embedding.input_dim # TODO: Return the number of logits per each output
                 @property
-                def output_dtype(self): return tf.dtypes.float64 # TODO: Return the type of the logits
+                def output_dtype(self): return tf.float64 # TODO: Return the type of the logits
 
                 def initialize(self, layer_inputs, initial_state=None):
                     self._model, self._source_states, self._targets = layer_inputs
@@ -161,7 +161,10 @@ class Network:
     @tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.int32)] * 2, autograph=False)
     def predict_batch(self, source_charseq_ids, source_charseqs):
         # TODO(train_batch): Embed source charseqs
+        embedded = self._model.source_embeddings.call(source_charseqs)
+
         # TODO(train_batch): Run self._model.source_rnn on the embedded sequences, returning outputs in `source_states`.
+        source_states = self._model.source_rnn.call(embedded)
 
         # Copy the source_states to corresponding batch places, and then flatten it
         source_mask = tf.not_equal(source_charseq_ids, 0)
@@ -169,29 +172,45 @@ class Network:
 
         class DecoderPrediction(decoder.BaseDecoder):
             @property
-            def batch_size(self): raise NotImplemented() # TODO(train_batch): Return the batch size of self._source_states, using tf.shape
+            def batch_size(self):  return tf.shape(self._source_states)[0] # TODO(train_batch): Return the batch size of self._source_states, using tf.shape
             @property
-            def output_size(self): raise NotImplemented() # TODO: Return 1 because we are returning directly the predictions
+            def output_size(self): return 1 # TODO: Return 1 because we are returning directly the predictions
             @property
-            def output_dtype(self): return NotImplemented() # TODO: Return tf.int32 because the predictions are integral
+            def output_dtype(self): return tf.int32 # TODO: Return tf.int32 because the predictions are integral
 
             def initialize(self, layer_inputs, initial_state=None):
                 self._model, self._source_states = layer_inputs
 
                 # TODO(train_batch): Define `finished` as a vector of self.batch_size of `False` [see tf.fill].
+                finished = tf.fill(self.batch_size(), False)
+
                 # TODO(train_batch): Define `inputs` as a vector of self.batch_size of MorphoDataset.Factor.BOW [see tf.fill],
                 # embedded using self._model.target_embedding
+                inputs = self._model.target_embedding.call(tf.fill(self.batch_size(), MorphoDataset.Factor.BOW))
+
                 # TODO(train_batch): Define `states` as self._source_states
+                states = self._source_states
+
                 return finished, inputs, states
 
             def step(self, time, inputs, states):
                 # TODO(train_batch): Pass `inputs` and `[states]` through self._model.target_rnn_cell, generating
                 # `outputs, [states]`.
+                outputs, states = self._model.target_rnn_cell.call(inputs, states)
+
                 # TODO(train_batch): Overwrite `outputs` by passing them through self._model.target_output_layer,
+                outputs = self._model.target_output_layer.call(outputs)
+
                 # TODO: Overwirte `outputs` by passing them through `tf.argmax` on suitable axis and with
                 # `output_type=tf.int32` parameter.
+                outputs = tf.argmax(outputs, axis=1, output_type=tf.int32)
+
                 # TODO: Define `next_inputs` by embedding the `outputs`
+                next_inputs = self._model.source_embeddings.call(outputs)
+
                 # TODO: Define `finished` as True if `outputs` are EOW, False otherwise. [No == or !=].
+                finished = tf.equal(self._targets[time], MorphoDataset.Factor.BOW)
+
                 return outputs, states, next_inputs, finished
 
         predictions, _, _ = DecoderPrediction(maximum_iterations=tf.shape(source_charseqs)[1] + 10)([self._model, source_states])
