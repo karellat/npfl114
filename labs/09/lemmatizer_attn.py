@@ -13,24 +13,57 @@ class Network:
 
                 # TODO(lemmatizer_noattn): Define
                 # - source_embeddings as a masked embedding layer of source chars into args.cle_dim dimensions
-
+                
+                self.source_embeddings = tf.keras.layers.Embedding(
+                    input_dim  = num_source_chars,
+                    output_dim = args.cle_dim,
+                    mask_zero  = True
+                )
+                
                 # TODO: Define
                 # - source_rnn as a bidirectional GRU with args.rnn_dim units, returning _whole sequences_, summing opposite directions
+
+                self.source_rnn = tf.keras.layers.Bidirectional(
+                    tf.keras.layers.GRU(
+                        args.rnn_cell_dim,
+                        return_sequences=True
+                    )
+                )
 
                 # TODO(lemmatizer_noattn): Define
                 # - target_embedding as an unmasked embedding layer of target chars into args.cle_dim dimensions
                 # - target_rnn_cell as a GRUCell with args.rnn_dim units
                 # - target_output_layer as a Dense layer into `num_target_chars`
+                self.target_embedding = tf.keras.layers.Embedding(
+                    output_dim = args.cle_dim,
+                    mask_zero  = False
+                )
+                self.target_rnn_cell = tf.keras.layers.GRU(
+                    args.rnn_cell_dim
+                )
+                self.target_output_layer = tf.keras.layers.Dense(
+                    num_target_chars
+                )
 
                 # TODO: Define
                 # - attention_source_layer as a Dense layer with args.rnn_dim outputs
                 # - attention_state_layer as a Dense layer with args.rnn_dim outputs
                 # - attention_weight_layer as a Dense layer with 1 output
+                self.attention_source_layer = tf.keras.layers.Dense(
+                    args.rnn_dim
+                )
+                self.attention_state_layer = tf.keras.layers.Dense(
+                    args.rnn_dim
+                )
+                self.attention_weight_layer = tf.keras.layers.Dense(
+                    1
+                )
 
         self._model = Model()
 
         self._optimizer = tf.optimizers.Adam()
         # TODO(lemmatizer_noattn): Define self._loss as SparseCategoricalCrossentropy which processes _logits_ instead of probabilities
+        
         self._metrics_training = {"loss": tf.metrics.Mean(), "accuracy": tf.metrics.SparseCategoricalAccuracy()}
         self._metrics_evaluation = {"accuracy": tf.metrics.Mean()}
         self._writer = tf.summary.create_file_writer(args.logdir, flush_millis=10 * 1000)
