@@ -13,36 +13,35 @@ class Network:
 
                 # TODO: Define
                 # - source_embeddings as a masked embedding layer of source chars into args.cle_dim dimensions
-                # - source_rnn as a bidirectional GRU with args.rnn_dim units, returning only the last output
-                #   (i.e., return_sequences=False), summing opposite directions
-
                 self.source_embeddings = tf.keras.layers.Embedding(
                     input_dim  = num_source_chars,
                     output_dim = args.cle_dim,
                     mask_zero  = True
                 )
 
+                # - source_rnn as a bidirectional GRU with args.rnn_dim units, returning only the last output
+                #   (i.e., return_sequences=False), summing opposite directions
                 self.source_rnn = tf.keras.layers.Bidirectional(
                     tf.keras.layers.GRU(
-                        args.rnn_cell_dim,
-                        return_sequences=True
-                    )
+                        args.rnn_dim,
+                        return_sequences=False
+                    ),
+                    merge_mode='sum'
                 )
 
                 # - target_embedding as an unmasked embedding layer of target chars into args.cle_dim dimensions
-                # - target_rnn_cell as a GRUCell with args.rnn_dim units
-                # - target_output_layer as a Dense layer into `num_target_chars`
-
                 self.target_embedding = tf.keras.layers.Embedding(
                     input_dim  = num_target_chars,
                     output_dim = args.cle_dim,
                     mask_zero  = False
                 )
 
-                self.target_rnn_cell = tf.keras.layers.GRU(
-                    args.rnn_cell_dim
+                # - target_rnn_cell as a GRUCell with args.rnn_dim units
+                self.target_rnn_cell = tf.keras.layers.GRUCell(
+                    args.rnn_dim
                 )
 
+                # - target_output_layer as a Dense layer into `num_target_chars`
                 self.target_output_layer = tf.keras.layers.Dense(
                     num_target_chars
                 )
@@ -65,14 +64,14 @@ class Network:
     @tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.int32)] * 4, autograph=False)
     def train_batch(self, source_charseq_ids, source_charseqs, target_charseq_ids, target_charseqs):
         # TODO: Modify target_charseqs by appending EOW; only the version with appended EOW is used from now on.
-        eow_target_charseqs = this._append_eow(target_charseqs)
+        target_charseqs = self._append_eow(target_charseqs)
 
         with tf.GradientTape() as tape:
             # TODO: Embed source charseqs
-            embedded = self._model.source_embeddings.call(source_charseqs)
+            embedded = self._model.source_embeddings(source_charseqs)
 
             # TODO: Run self._model.source_rnn on the embedded sequences, returning outputs in `source_states`.
-            source_states = self._model.source_rnn.call(embedded)
+            source_states = self._model.source_rnn(embedded)
 
             # Copy the source_states to corresponding batch places, and then flatten it
             source_mask = tf.not_equal(source_charseq_ids, 0)
@@ -83,19 +82,19 @@ class Network:
                 @property
                 def batch_size(self): return tf.shape(self._source_states)[0] # TODO: Return the batch size of self._source_states, using tf.shape
                 @property
-                def output_size(self): return self._model.target_embedding.input_dim # TODO: Return the number of logits per each output
+                def output_size(self): return self._model.target_output_layer.units # TODO: Return the number of logits per each output
                 @property
-                def output_dtype(self): return tf.float64 # TODO: Return the type of the logits
+                def output_dtype(self): return tf.float32 # TODO: Return the type of the logits
 
                 def initialize(self, layer_inputs, initial_state=None):
                     self._model, self._source_states, self._targets = layer_inputs
 
                     # TODO: Define `finished` as a vector of self.batch_size of `False` [see tf.fill].
-                    finished = tf.fill(self.batch_size(), False)
+                    finished = tf.fill([self.batch_size], False)
                     
                     # TODO: Define `inputs` as a vector of self.batch_size of MorphoDataset.Factor.BOW [see tf.fill],
                     # embedded using self._model.target_embedding
-                    inputs = self._model.target_embedding.call(tf.fill(self.batch_size(), MorphoDataset.Factor.BOW))
+                    inputs = self._model.target_embedding(tf.fill([self.batch_size], MorphoDataset.Factor.BOW))
 
                     # TODO: Define `states` as self._source_states
                     states = self._source_states
@@ -105,24 +104,24 @@ class Network:
                 def step(self, time, inputs, states):
                     # TODO: Pass `inputs` and `[states]` through self._model.target_rnn_cell, generating
                     # `outputs, [states]`.
-                    outputs, states = self._model.target_rnn_cell.call(inputs, states)
+                    outputs, [states] = self._model.target_rnn_cell(inputs, [states])
 
                     # TODO: Overwrite `outputs` by passing them through self._model.target_output_layer,
-                    outputs = self._model.target_output_layer.call(outputs)
+                    outputs = self._model.target_output_layer(outputs)
 
                     # TODO: Define `next_inputs` by embedding `time`-th words from `self._targets`.
-                    next_inputs = self._model.source_embeddings.call(self._targets[time])
-
+                    next_inputs = self._model.source_embeddings(self._targets[time])
+                    
                     # TODO: Define `finished` as True if `time`-th word from `self._targets` is EOW, False otherwise.
                     # Again, no == or !=.
-                    finished = tf.equal(self._targets[time], MorphoDataset.Factor.BOW)
+                    finished = tf.equal(self._targets[time], MorphoDataset.Factor.EOW)
 
                     return outputs, states, next_inputs, finished
 
             output_layer, _, _ = DecoderTraining()([self._model, source_states, targets])
 
             # TODO: Compute loss. Use only nonzero `targets` as a mask.
-            loss = self._loss(targets, output_layer)
+            loss = self._loss(targets, output_layer, tf.not_equal(targets, 0))
 
         gradients = tape.gradient(loss, self._model.variables)
         self._optimizer.apply_gradients(zip(gradients, self._model.variables))
@@ -146,7 +145,9 @@ class Network:
             target_charseq_ids = batch[dataset.LEMMAS].charseq_ids
             target_charseqs = batch[dataset.LEMMAS].charseqs
 
-            predictions = self.train_batch(charseqs, charseq_ids, target_charseqs, target_charseq_ids)
+            #def train_batch(self, source_charseq_ids, source_charseqs, target_charseq_ids, target_charseqs):
+            #print(charseq_ids.shape, charseqs.shape, target_charseq_ids.shape, target_charseqs.shape)
+            predictions = self.train_batch(charseq_ids, charseqs, target_charseq_ids, target_charseqs)
 
             form, gold_lemma, system_lemma = "", "", ""
             for i in batch[dataset.FORMS].charseqs[1]:
@@ -161,10 +162,10 @@ class Network:
     @tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.int32)] * 2, autograph=False)
     def predict_batch(self, source_charseq_ids, source_charseqs):
         # TODO(train_batch): Embed source charseqs
-        embedded = self._model.source_embeddings.call(source_charseqs)
+        embedded = self._model.source_embeddings(source_charseqs)
 
         # TODO(train_batch): Run self._model.source_rnn on the embedded sequences, returning outputs in `source_states`.
-        source_states = self._model.source_rnn.call(embedded)
+        source_states = self._model.source_rnn(embedded)
 
         # Copy the source_states to corresponding batch places, and then flatten it
         source_mask = tf.not_equal(source_charseq_ids, 0)
@@ -172,7 +173,7 @@ class Network:
 
         class DecoderPrediction(decoder.BaseDecoder):
             @property
-            def batch_size(self):  return tf.shape(self._source_states)[0] # TODO(train_batch): Return the batch size of self._source_states, using tf.shape
+            def batch_size(self):  return (tf.shape(self._source_states)[0],) # TODO(train_batch): Return the batch size of self._source_states, using tf.shape
             @property
             def output_size(self): return 1 # TODO: Return 1 because we are returning directly the predictions
             @property
@@ -182,11 +183,11 @@ class Network:
                 self._model, self._source_states = layer_inputs
 
                 # TODO(train_batch): Define `finished` as a vector of self.batch_size of `False` [see tf.fill].
-                finished = tf.fill(self.batch_size(), False)
+                finished = tf.fill(self.batch_size, False)
 
                 # TODO(train_batch): Define `inputs` as a vector of self.batch_size of MorphoDataset.Factor.BOW [see tf.fill],
                 # embedded using self._model.target_embedding
-                inputs = self._model.target_embedding.call(tf.fill(self.batch_size(), MorphoDataset.Factor.BOW))
+                inputs = self._model.target_embedding(tf.fill(self.batch_size, MorphoDataset.Factor.BOW))
 
                 # TODO(train_batch): Define `states` as self._source_states
                 states = self._source_states
@@ -196,17 +197,17 @@ class Network:
             def step(self, time, inputs, states):
                 # TODO(train_batch): Pass `inputs` and `[states]` through self._model.target_rnn_cell, generating
                 # `outputs, [states]`.
-                outputs, states = self._model.target_rnn_cell.call(inputs, states)
+                outputs, states = self._model.target_rnn_cell(inputs, states)
 
                 # TODO(train_batch): Overwrite `outputs` by passing them through self._model.target_output_layer,
-                outputs = self._model.target_output_layer.call(outputs)
+                outputs = self._model.target_output_layer(outputs)
 
                 # TODO: Overwirte `outputs` by passing them through `tf.argmax` on suitable axis and with
                 # `output_type=tf.int32` parameter.
                 outputs = tf.argmax(outputs, axis=1, output_type=tf.int32)
 
                 # TODO: Define `next_inputs` by embedding the `outputs`
-                next_inputs = self._model.source_embeddings.call(outputs)
+                next_inputs = self._model.source_embeddings(outputs)
 
                 # TODO: Define `finished` as True if `outputs` are EOW, False otherwise. [No == or !=].
                 finished = tf.equal(self._targets[time], MorphoDataset.Factor.BOW)
