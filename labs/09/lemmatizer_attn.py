@@ -127,7 +127,7 @@ class Network:
                     inputs = self._model.target_embedding(tf.fill([self.batch_size], MorphoDataset.Factor.BOW))
                     # TODO: Define `states` as the last words from self._source_encoded
                     #TODO: WHAT THE?
-                    states = self._source_encoded[-1]
+                    states = self._source_encoded
                     # TODO: Pass `inputs` through `self._with_attention(inputs, states)`.
                     inputs = self._with_attention(inputs, states)
                     return finished, inputs, states
