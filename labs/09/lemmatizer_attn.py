@@ -13,24 +13,49 @@ class Network:
 
                 # TODO(lemmatizer_noattn): Define
                 # - source_embeddings as a masked embedding layer of source chars into args.cle_dim dimensions
-
+                self.source_embeddings = tf.keras.layers.Embedding(
+                    input_dim  = num_source_chars,
+                    output_dim = args.cle_dim,
+                    mask_zero  = True
+                )
                 # TODO: Define
                 # - source_rnn as a bidirectional GRU with args.rnn_dim units, returning _whole sequences_, summing opposite directions
-
+                self.source_rnn = tf.keras.layers.Bidirectional(
+                    tf.keras.layers.GRU(
+                        args.rnn_dim,
+                        return_sequences=False
+                    ),
+                    merge_mode='sum'
+                )
                 # TODO(lemmatizer_noattn): Define
                 # - target_embedding as an unmasked embedding layer of target chars into args.cle_dim dimensions
+                self.target_embedding = tf.keras.layers.Embedding(
+                    input_dim  = num_target_chars,
+                    output_dim = args.cle_dim,
+                    mask_zero  = False
+                )
                 # - target_rnn_cell as a GRUCell with args.rnn_dim units
+                self.target_rnn_cell = tf.keras.layers.GRUCell(
+                    args.rnn_dim
+                )
                 # - target_output_layer as a Dense layer into `num_target_chars`
 
+                self.target_output_layer = tf.keras.layers.Dense(
+                    num_target_chars
+                )
                 # TODO: Define
                 # - attention_source_layer as a Dense layer with args.rnn_dim outputs
+                self.attention_source_layer = tf.keras.layers.Dense(args.rnn_dim)
                 # - attention_state_layer as a Dense layer with args.rnn_dim outputs
+                self.attention_state_layer = tf.keras.layers.Dense(args.rnn_dim)
                 # - attention_weight_layer as a Dense layer with 1 output
+                self.attention_weight_layer = tf.keras.layers.Dense(1)
 
         self._model = Model()
 
         self._optimizer = tf.optimizers.Adam()
         # TODO(lemmatizer_noattn): Define self._loss as SparseCategoricalCrossentropy which processes _logits_ instead of probabilities
+        self._loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
         self._metrics_training = {"loss": tf.metrics.Mean(), "accuracy": tf.metrics.SparseCategoricalAccuracy()}
         self._metrics_evaluation = {"accuracy": tf.metrics.Mean()}
         self._writer = tf.summary.create_file_writer(args.logdir, flush_millis=10 * 1000)
@@ -44,10 +69,15 @@ class Network:
     @tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.int32)] * 4, autograph=False)
     def train_batch(self, source_charseq_ids, source_charseqs, target_charseq_ids, target_charseqs):
         # TODO(lemmatizer_noattn): Modify target_charseqs by appending EOW; only the version with appended EOW is used from now on.
+        target_charseqs = self._append_eow(target_charseqs)
 
         with tf.GradientTape() as tape:
             # TODO(lemmatizer_noattn): Embed source charseqs
+            embedded = self._model.source_embeddings(source_charseqs)
+
             # TODO: Run self._model.source_rnn on the embedded sequences, returning outputs in `source_encoded`.
+            source_encoded = self._model.source_rnn(embedded)
+
 
             # Copy the source_encoded to corresponding batch places, and then flatten it
             source_mask = tf.not_equal(source_charseq_ids, 0)
@@ -56,49 +86,70 @@ class Network:
 
             class DecoderTraining(decoder.BaseDecoder):
                 @property
-                def batch_size(self): raise NotImplemented() # TODO: Return the batch size of self._source_encoded, using tf.shape
+                def batch_size(self): return tf.shape(self._source_encoded)[0] # TODO: Return the batch size of self._source_encoded, using tf.shape
                 @property
-                def output_size(self): raise NotImplemented() # TODO(lemmatizer_noattn): Return the number logits per each output
+                def output_size(self): return tf.shape(self._targets[1]) # TODO(lemmatizer_noattn): Return the number logits per each output
                 @property
-                def output_dtype(self): raise NotImplemented() # TODO(lemmatizer_noattn): Return the type of the logits
+                def output_dtype(self): return tf.float32 # TODO(lemmatizer_noattn): Return the type of the logits
 
                 def _with_attention(self, inputs, states):
                     # TODO: Compute the attention.
                     # - Take self._source_encoded and pass it through the self._model.attention_source_layer.
+                    att = self._model.attention_source_layer(self._source_encoded) 
                     #   Because self._source_encoded does not change, you should in fact do it in `initialize`.
+                    # TODO: WHAT THE?? 
                     # - Pass `states` though self._model.attention_state_layer.
+                    states_att  = self._model.attention_state_layer(states)
+
                     # - Sum the two outputs. However, the first has shape [a, b, c] and the second [a, c]. Therefore,
                     #   somehow expand the second to [a, b, c] first. (Hint: use broadcasting rules.)
+                    states_att = tf.reshape(states_att, att.shape)
+                    sum_att = tf.add(att, states_att)
                     # - Pass the sum through `tf.tanh`, then self._model.attention_weight_layer.
+                    sum_att = self._model.attention_weight_layer(tf.tanh(sum_att))
                     # - Then, run softmax on a suitable axis (the one corresponding to characters), generating `weights`.
+                    weights = tf.math.softmax(sum_att,axis=-1)
                     # - Multiply `self._source_encoded` with `weights` and sum the result in the axis
                     #   corresponding to characters, generating `attention`. Therefore, `attention` is a a fixed-size
                     #   representation for every batch element, independently on how many characters had
                     #   the corresponding input forms.
+                    attetion =  tf.reduce_sum(self._source_encoded * weights, axis=-1)
                     # - Finally concatenate `inputs` and `attention` and return the result.
+                    return tf.concat([inputs, attention], axis=0)
 
                 def initialize(self, layer_inputs, initial_state=None):
                     self._model, self._source_encoded, self._targets = layer_inputs
 
                     # TODO(lemmatozer_noattn): Define `finished` as a vector of self.batch_size of `False` [see tf.fill].
+                    finished = tf.fill([self.batch_size], False)
                     # TODO(lemmatizer_noattn): Define `inputs` as a vector of self.batch_size of MorphoDataset.Factor.BOW [see tf.fill],
                     # embedded using self._model.target_embedding
+                    inputs = self._model.target_embedding(tf.fill([self.batch_size], MorphoDataset.Factor.BOW))
                     # TODO: Define `states` as the last words from self._source_encoded
+                    #TODO: WHAT THE?
+                    states = self._source_encoded[-1]
                     # TODO: Pass `inputs` through `self._with_attention(inputs, states)`.
+                    inputs = self._with_attention(inputs, states)
                     return finished, inputs, states
 
                 def step(self, time, inputs, states):
                     # TODO(lemmatizer_noattn): Pass `inputs` and `[states]` through self._model.target_rnn_cell, generating
                     # `outputs, [states]`.
+                    outputs, [states] = self._model.target_rnn_cell(inputs, [states])
                     # TODO(lemmatizer_noattn): Overwrite `outputs` by passing them through self._model.target_output_layer,
+                    outputs = self._model.target_output_layer(outputs)
                     # TODO(lemmatizer_noattn): Define `next_inputs` by embedding `time`-th words from `self._targets`.
+                    next_inputs = self._model.target_embedding(self._targets[:,time])
                     # TODO(lemmatizer_noattn): Define `finished` as True if `time`-th word from `self._targets` is EOW, False otherwise.
+                    finished = tf.equal(self._targets[:, time], MorphoDataset.Factor.EOW)
                     # Again, no == or !=.
                     # TODO: Pass `next_inputs` through `self._with_attention(inputs, states)`.
+                    next_inputs = self._with_attetention(next_inputs, states)
                     return outputs, states, next_inputs, finished
 
             output_layer, _, _ = DecoderTraining()([self._model, source_encoded, targets])
             # TODO(lemmatizer_noattn): Compute loss. Use only nonzero `targets` as a mask.
+            loss = self._loss(targets, output_layer, tf.not_equal(targets, 0))
         gradients = tape.gradient(loss, self._model.variables)
         self._optimizer.apply_gradients(zip(gradients, self._model.variables))
 
@@ -116,6 +167,13 @@ class Network:
         for batch in dataset.batches(args.batch_size):
             # TODO(lemmatizer_noattn): Call train_batch, storing results in `predictions`.
 
+            charseqs = batch[dataset.FORMS].charseqs
+            charseq_ids = batch[dataset.FORMS].charseq_ids
+            target_charseq_ids = batch[dataset.LEMMAS].charseq_ids
+            target_charseqs = batch[dataset.LEMMAS].charseqs
+
+            predictions = self.train_batch(charseq_ids, charseqs, target_charseq_ids, target_charseqs)
+
             form, gold_lemma, system_lemma = "", "", ""
             for i in batch[dataset.FORMS].charseqs[1]:
                 if i: form += dataset.data[dataset.FORMS].alphabet[i]
@@ -129,7 +187,9 @@ class Network:
     @tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.int32)] * 2, autograph=False)
     def predict_batch(self, source_charseq_ids, source_charseqs):
         # TODO(lemmatizer_noattn)(train_batch): Embed source charseqs
+        embedded = self._model.source_embeddings(source_charseqs)
         # TODO(train_batch): Run self._model.source_rnn on the embedded sequences, returning outputs in `source_encoded`.
+        source_encoded = self._model.source_rnn(embedded)
 
         # Copy the source_encoded to corresponding batch places, and then flatten it
         source_mask = tf.not_equal(source_charseq_ids, 0)
@@ -137,35 +197,69 @@ class Network:
 
         class DecoderPrediction(decoder.BaseDecoder):
             @property
-            def batch_size(self): raise NotImplemented() # TODO(lemmatizer_noattn)(train_batch): Return the batch size of self._source_encoded, using tf.shape
+            def batch_size(self): return tf.shape(self._source_encoded)[0] # TODO(lemmatizer_noattn)(train_batch): Return the batch size of self._source_encoded, using tf.shape
             @property
-            def output_size(self): raise NotImplemented() # TODO(lemmatizer_noattn): Return 1 because we are returning directly the predictions
+            def output_size(self): return 1 # TODO(lemmatizer_noattn): Return 1 because we are returning directly the predictions
             @property
-            def output_dtype(self): return NotImplemented() # TODO(lemmatizer_noattn): Return tf.int32 because the predictions are integral
+            def output_dtype(self): return tf.int32 # TODO(lemmatizer_noattn): Return tf.int32 because the predictions are integral
 
             def _with_attention(self, inputs, states):
                 # TODO: A copy of _with_attention from train_batch; you can of course
                 # move the definition to a place where it can be reused in both places.
+                # TODO: Compute the attention.
+                # - Take self._source_encoded and pass it through the self._model.attention_source_layer.
+                att = self._model.attention_source_layer(self._source_encoded) 
+                #   Because self._source_encoded does not change, you should in fact do it in `initialize`.
+                # TODO: WHAT THE?? 
+                # - Pass `states` though self._model.attention_state_layer.
+                states_att  = self._model.attention_state_layer(states)
+
+                # - Sum the two outputs. However, the first has shape [a, b, c] and the second [a, c]. Therefore,
+                #   somehow expand the second to [a, b, c] first. (Hint: use broadcasting rules.)
+                states_att = tf.reshape(states_att, att.shape)
+                sum_att = tf.add(att, states_att)
+                # - Pass the sum through `tf.tanh`, then self._model.attention_weight_layer.
+                sum_att = self._model.attention_weight_layer(tf.tanh(sum_att))
+                # - Then, run softmax on a suitable axis (the one corresponding to characters), generating `weights`.
+                weights = tf.math.softmax(sum_att,axis=-1)
+                # - Multiply `self._source_encoded` with `weights` and sum the result in the axis
+                #   corresponding to characters, generating `attention`. Therefore, `attention` is a a fixed-size
+                #   representation for every batch element, independently on how many characters had
+                #   the corresponding input forms.
+                attetion =  tf.reduce_sum(self._source_encoded * weights, axis=-1)
+                # - Finally concatenate `inputs` and `attention` and return the result.
+                return tf.concat([inputs, attention], axis=0)
 
             def initialize(self, layer_inputs, initial_state=None):
                 self._model, self._source_encoded = layer_inputs
 
                 # TODO(lemmatizer_noattn)(train_batch): Define `finished` as a vector of self.batch_size of `False` [see tf.fill].
+                finished = tf.fill([self.batch_size], False)
                 # TODO(lemmatizer_noattn)(train_batch): Define `inputs` as a vector of self.batch_size of MorphoDataset.Factor.BOW [see tf.fill],
                 # embedded using self._model.target_embedding
+                inputs = self._model.target_embedding(tf.fill([self.batch_size], MorphoDataset.Factor.BOW))
                 # TODO(train_batch): Define `states` as the last words from self._source_encoded
+                # TODO: WHAT THE??
+                statest = self._source_encoded[-1]
                 # TODO(train_batch): Pass `inputs` through `self._with_attention(inputs, states)`.
+                inputs = self._with_attention(inputs, states)
                 return finished, inputs, states
 
             def step(self, time, inputs, states):
                 # TODO(lemmatizer_noattn)(train_batch): Pass `inputs` and `[states]` through self._model.target_rnn_cell, generating
                 # `outputs, [states]`.
+                outputs, [states] = self._model.target_rnn_cell(inputs, [states])
                 # TODO(lemmatizer_noattn)(train_batch): Overwrite `outputs` by passing them through self._model.target_output_layer,
+                outputs = self._model.target_output_layer(outputs)
                 # TODO(lemmatizer_noattn): Overwirte `outputs` by passing them through `tf.argmax` on suitable axis and with
                 # `output_type=tf.int32` parameter.
+                outputs = tf.argmax(outputs, axis=1, output_type=tf.int32)
                 # TODO(lemmatizer_noattn): Define `next_inputs` by embedding the `outputs`
+                next_inputs = self._model.target_embedding(outputs)
                 # TODO(lemmatizer_noattn): Define `finished` as True if `outputs` are EOW, False otherwise. [No == or !=].
+                finished = tf.equal(outputs, MorphoDataset.Factor.EOW)
                 # TODO(train_batch): Pass `next_inputs` through `self._with_attention(inputs, states)`.
+                next_inputs = self._with_attention(inputs, states)
                 return outputs, states, next_inputs, finished
 
         predictions, _, _ = DecoderPrediction(maximum_iterations=tf.shape(source_charseqs)[1] + 10)([self._model, source_encoded])
