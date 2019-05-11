@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+#
+# All team solutions **must** list **all** members of the team.
+# The members must be listed using their ReCodEx IDs anywhere
+# in a comment block in the source file (on a line beginning with `#`).
+#
+# You can find out ReCodEx ID in the URL bar after navigating
+# to your User profile page. The ID has the following format:
+# 310a5c89-3ea1-11e9-b0fd-00505601122b
+# 90257956-3ea2-11e9-b0fd-00505601122b
+# 69bef76d-1ebb-11e8-9de3-00505601122b
 import numpy as np
 import tensorflow as tf
 
@@ -27,6 +37,7 @@ class Network:
                     ),
                     merge_mode='sum'
                 )
+                
                 # TODO(lemmatizer_noattn): Define
                 # - target_embedding as an unmasked embedding layer of target chars into args.cle_dim dimensions
                 self.target_embedding = tf.keras.layers.Embedding(
@@ -34,15 +45,17 @@ class Network:
                     output_dim = args.cle_dim,
                     mask_zero  = False
                 )
+                
                 # - target_rnn_cell as a GRUCell with args.rnn_dim units
                 self.target_rnn_cell = tf.keras.layers.GRUCell(
                     args.rnn_dim
                 )
-                # - target_output_layer as a Dense layer into `num_target_chars`
 
+                # - target_output_layer as a Dense layer into `num_target_chars`
                 self.target_output_layer = tf.keras.layers.Dense(
                     num_target_chars
                 )
+                
                 # TODO: Define
                 # - attention_source_layer as a Dense layer with args.rnn_dim outputs
                 self.attention_source_layer = tf.keras.layers.Dense(args.rnn_dim)
@@ -68,7 +81,7 @@ class Network:
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.int32)] * 4, autograph=False)
     def train_batch(self, source_charseq_ids, source_charseqs, target_charseq_ids, target_charseqs):
-        print('train batch')
+        #print('train batch')
         # TODO(lemmatizer_noattn): Modify target_charseqs by appending EOW; only the version with appended EOW is used from now on.
         target_charseqs = self._append_eow(target_charseqs)
 
@@ -78,7 +91,6 @@ class Network:
 
             # TODO: Run self._model.source_rnn on the embedded sequences, returning outputs in `source_encoded`.
             source_encoded = self._model.source_rnn(embedded)
-
 
             # Copy the source_encoded to corresponding batch places, and then flatten it
             source_mask = tf.not_equal(source_charseq_ids, 0)
@@ -104,19 +116,28 @@ class Network:
 
                     # - Sum the two outputs. However, the first has shape [a, b, c] and the second [a, c]. Therefore,
                     #   somehow expand the second to [a, b, c] first. (Hint: use broadcasting rules.)
-                    states_att = tf.expand_dims(states_att, 1)
+                    states_att = tf.tile(tf.expand_dims(states_att, 1), [1, tf.shape(att)[1], 1])
+                    #print('=======')
+                    #print(att.shape)
+                    #print(states_att.shape)
+                    #print('=======')
                     sum_att = tf.add(att, states_att)
+                    #print(sum_att.shape)
                     # - Pass the sum through `tf.tanh`, then self._model.attention_weight_layer.
                     sum_att = self._model.attention_weight_layer(tf.tanh(sum_att))
                     # - Then, run softmax on a suitable axis (the one corresponding to characters), generating `weights`.
-                    weights = tf.math.softmax(sum_att,axis=-1)
+                    weights = tf.math.softmax(sum_att, axis=1)
                     # - Multiply `self._source_encoded` with `weights` and sum the result in the axis
                     #   corresponding to characters, generating `attention`. Therefore, `attention` is a a fixed-size
                     #   representation for every batch element, independently on how many characters had
                     #   the corresponding input forms.
-                    attention =  tf.reduce_sum(self._source_encoded * weights, axis=-1)
+                    attention = tf.reduce_sum(self._source_encoded * weights, axis=1)
                     # - Finally concatenate `inputs` and `attention` and return the result.
-                    return tf.concat([inputs, attention], axis=0)
+                    #print('-------')
+                    #print(inputs.shape)
+                    #print(attention.shape)
+                    #print('-------')
+                    return tf.concat([inputs, attention], axis=1)
 
                 def initialize(self, layer_inputs, initial_state=None):
                     self._model, self._source_encoded, self._targets = layer_inputs
@@ -128,12 +149,16 @@ class Network:
                     inputs = self._model.target_embedding(tf.fill([self.batch_size], MorphoDataset.Factor.BOW))
                     # TODO: Define `states` as the last words from self._source_encoded
                     #TODO: WHAT THE?
+                    #print('states')
+                    #print(self._source_encoded.shape)
                     states = self._source_encoded[:, -1]
+                    #print(states.shape)
                     # TODO: Pass `inputs` through `self._with_attention(inputs, states)`.
-                    print(inputs.shape)
-                    print(states.shape)
+                    #print('shapes')
+                    #print(inputs.shape)
+                    #print(states.shape)
                     inputs = self._with_attention(inputs, states)
-                    print(inputs.shape)
+                    #print(inputs.shape)
                     return finished, inputs, states
 
                 def step(self, time, inputs, states):
@@ -148,20 +173,23 @@ class Network:
                     finished = tf.equal(self._targets[:, time], MorphoDataset.Factor.EOW)
                     # Again, no == or !=.
                     # TODO: Pass `next_inputs` through `self._with_attention(inputs, states)`.
+                    #print('stepping')
+                    #print(next_inputs.shape)
+                    #print(states.shape)
                     next_inputs = self._with_attention(next_inputs, states)
                     return outputs, states, next_inputs, finished
 
-            print('decode')
+            #print('decode')
             output_layer, _, _ = DecoderTraining()([self._model, source_encoded, targets])
             # TODO(lemmatizer_noattn): Compute loss. Use only nonzero `targets` as a mask.
-            print('loss')
+            #print('loss')
             loss = self._loss(targets, output_layer, tf.not_equal(targets, 0))
-        print('gradient')
+        #print('gradient')
         gradients = tape.gradient(loss, self._model.variables)
-        print('optimizer')
+        #print('optimizer')
         self._optimizer.apply_gradients(zip(gradients, self._model.variables))
 
-        print('metrics')
+        #print('metrics')
         tf.summary.experimental.set_step(self._optimizer.iterations)
         with self._writer.as_default():
             for name, metric in self._metrics_training.items():
@@ -170,7 +198,8 @@ class Network:
                 else: metric(targets, output_layer, tf.not_equal(targets, 0))
                 tf.summary.scalar("train/{}".format(name), metric.result())
 
-        print('end train batch')
+        #print('end train batch')
+        #print(output_layer.shape)
         return tf.math.argmax(output_layer, axis=2)
 
     def train_epoch(self, dataset, args):
@@ -183,6 +212,7 @@ class Network:
             target_charseqs = batch[dataset.LEMMAS].charseqs
 
             predictions = self.train_batch(charseq_ids, charseqs, target_charseq_ids, target_charseqs)
+            #print('I have my predictions!!!')
 
             form, gold_lemma, system_lemma = "", "", ""
             for i in batch[dataset.FORMS].charseqs[1]:
@@ -226,20 +256,20 @@ class Network:
 
                 # - Sum the two outputs. However, the first has shape [a, b, c] and the second [a, c]. Therefore,
                 #   somehow expand the second to [a, b, c] first. (Hint: use broadcasting rules.)
-                states_att = tf.reshape(states_att, att.shape)
+                states_att = tf.tile(tf.expand_dims(states_att, 1), [1, tf.shape(att)[1], 1])
                 sum_att = tf.add(att, states_att)
                 # - Pass the sum through `tf.tanh`, then self._model.attention_weight_layer.
                 sum_att = self._model.attention_weight_layer(tf.tanh(sum_att))
                 # - Then, run softmax on a suitable axis (the one corresponding to characters), generating `weights`.
-                weights = tf.math.softmax(sum_att,axis=-1)
+                weights = tf.math.softmax(sum_att,axis=1)
                 # - Multiply `self._source_encoded` with `weights` and sum the result in the axis
                 #   corresponding to characters, generating `attention`. Therefore, `attention` is a a fixed-size
                 #   representation for every batch element, independently on how many characters had
                 #   the corresponding input forms.
-                attetion =  tf.reduce_sum(self._source_encoded * weights, axis=-1)
+                attention =  tf.reduce_sum(self._source_encoded * weights, axis=1)
                 # - Finally concatenate `inputs` and `attention` and return the result.
-                print(inputs.shape)
-                print(attention.shape)
+                #print(inputs.shape)
+                #print(attention.shape)
                 return tf.concat([inputs, attention], axis=1)
 
             def initialize(self, layer_inputs, initial_state=None):
@@ -252,7 +282,7 @@ class Network:
                 inputs = self._model.target_embedding(tf.fill([self.batch_size], MorphoDataset.Factor.BOW))
                 # TODO(train_batch): Define `states` as the last words from self._source_encoded
                 # TODO: WHAT THE??
-                statest = self._source_encoded[-1]
+                states = self._source_encoded[:, -1]
                 # TODO(train_batch): Pass `inputs` through `self._with_attention(inputs, states)`.
                 inputs = self._with_attention(inputs, states)
                 return finished, inputs, states
@@ -271,9 +301,10 @@ class Network:
                 # TODO(lemmatizer_noattn): Define `finished` as True if `outputs` are EOW, False otherwise. [No == or !=].
                 finished = tf.equal(outputs, MorphoDataset.Factor.EOW)
                 # TODO(train_batch): Pass `next_inputs` through `self._with_attention(inputs, states)`.
-                next_inputs = self._with_attention(inputs, states)
+                next_inputs = self._with_attention(next_inputs, states)
                 return outputs, states, next_inputs, finished
 
+        #print('predictions babyyyy')
         predictions, _, _ = DecoderPrediction(maximum_iterations=tf.shape(source_charseqs)[1] + 10)([self._model, source_encoded])
         return predictions
 
