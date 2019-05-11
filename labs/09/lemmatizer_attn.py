@@ -23,7 +23,7 @@ class Network:
                 self.source_rnn = tf.keras.layers.Bidirectional(
                     tf.keras.layers.GRU(
                         args.rnn_dim,
-                        return_sequences=False
+                        return_sequences=True
                     ),
                     merge_mode='sum'
                 )
@@ -68,6 +68,7 @@ class Network:
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.int32)] * 4, autograph=False)
     def train_batch(self, source_charseq_ids, source_charseqs, target_charseq_ids, target_charseqs):
+        print('train batch')
         # TODO(lemmatizer_noattn): Modify target_charseqs by appending EOW; only the version with appended EOW is used from now on.
         target_charseqs = self._append_eow(target_charseqs)
 
@@ -103,7 +104,7 @@ class Network:
 
                     # - Sum the two outputs. However, the first has shape [a, b, c] and the second [a, c]. Therefore,
                     #   somehow expand the second to [a, b, c] first. (Hint: use broadcasting rules.)
-                    states_att = tf.reshape(states_att, att.shape)
+                    states_att = tf.expand_dims(states_att, 1)
                     sum_att = tf.add(att, states_att)
                     # - Pass the sum through `tf.tanh`, then self._model.attention_weight_layer.
                     sum_att = self._model.attention_weight_layer(tf.tanh(sum_att))
@@ -113,7 +114,7 @@ class Network:
                     #   corresponding to characters, generating `attention`. Therefore, `attention` is a a fixed-size
                     #   representation for every batch element, independently on how many characters had
                     #   the corresponding input forms.
-                    attetion =  tf.reduce_sum(self._source_encoded * weights, axis=-1)
+                    attention =  tf.reduce_sum(self._source_encoded * weights, axis=-1)
                     # - Finally concatenate `inputs` and `attention` and return the result.
                     return tf.concat([inputs, attention], axis=0)
 
@@ -127,9 +128,12 @@ class Network:
                     inputs = self._model.target_embedding(tf.fill([self.batch_size], MorphoDataset.Factor.BOW))
                     # TODO: Define `states` as the last words from self._source_encoded
                     #TODO: WHAT THE?
-                    states = self._source_encoded
+                    states = self._source_encoded[:, -1]
                     # TODO: Pass `inputs` through `self._with_attention(inputs, states)`.
+                    print(inputs.shape)
+                    print(states.shape)
                     inputs = self._with_attention(inputs, states)
+                    print(inputs.shape)
                     return finished, inputs, states
 
                 def step(self, time, inputs, states):
@@ -144,15 +148,20 @@ class Network:
                     finished = tf.equal(self._targets[:, time], MorphoDataset.Factor.EOW)
                     # Again, no == or !=.
                     # TODO: Pass `next_inputs` through `self._with_attention(inputs, states)`.
-                    next_inputs = self._with_attetention(next_inputs, states)
+                    next_inputs = self._with_attention(next_inputs, states)
                     return outputs, states, next_inputs, finished
 
+            print('decode')
             output_layer, _, _ = DecoderTraining()([self._model, source_encoded, targets])
             # TODO(lemmatizer_noattn): Compute loss. Use only nonzero `targets` as a mask.
+            print('loss')
             loss = self._loss(targets, output_layer, tf.not_equal(targets, 0))
+        print('gradient')
         gradients = tape.gradient(loss, self._model.variables)
+        print('optimizer')
         self._optimizer.apply_gradients(zip(gradients, self._model.variables))
 
+        print('metrics')
         tf.summary.experimental.set_step(self._optimizer.iterations)
         with self._writer.as_default():
             for name, metric in self._metrics_training.items():
@@ -161,6 +170,7 @@ class Network:
                 else: metric(targets, output_layer, tf.not_equal(targets, 0))
                 tf.summary.scalar("train/{}".format(name), metric.result())
 
+        print('end train batch')
         return tf.math.argmax(output_layer, axis=2)
 
     def train_epoch(self, dataset, args):
@@ -228,7 +238,9 @@ class Network:
                 #   the corresponding input forms.
                 attetion =  tf.reduce_sum(self._source_encoded * weights, axis=-1)
                 # - Finally concatenate `inputs` and `attention` and return the result.
-                return tf.concat([inputs, attention], axis=0)
+                print(inputs.shape)
+                print(attention.shape)
+                return tf.concat([inputs, attention], axis=1)
 
             def initialize(self, layer_inputs, initial_state=None):
                 self._model, self._source_encoded = layer_inputs
