@@ -11,19 +11,38 @@ class Network:
 
         # TODO: Define `self.encoder` as a Model, which
         # - takes input images with shape [MNIST.H, MNIST.W, MNIST.C]
+        input1 = tf.keras.layers.Input([MNIST.H, MNIST.W, MNIST.C])
         # - flattens them
+        flatten1 = tf.keras.layers.Flatten()(input1)
         # - applies len(args.encoder_layers) dense layers with ReLU activation,
         #   i-th layer with args.encoder_layers[i] units
+        dense1 = flatten1
+        for l in args.encoder_layers:
+            dense1 = tf.keras.layers.Dense(l, activation='relu')(dense1)
         # - generate two outputs z_mean and z_log_variance, each passing the result
         #   of the above line through its own dense layer with args.z_dim units
+        z_mean = tf.keras.layers.Dense(args.z_dim)(dense1)
+        z_log_variance = tf.keras.layers.Dense(args.z_dim)(dense1)
+
+        self.encoder = tf.keras.Model(inputs=[input1], outputs=[z_mean,
+            z_log_variance])
 
         # TODO: Define `self.decoder` as a Model, which
         # - takes vectors of [args.z_dim] shape on input
+        input2 = tf.keras.layers.Input([args.z_dim])
         # - applies len(args.decoder_layers) dense layers with ReLU activation,
         #   i-th layer with args.decoder_layers[i] units
+        dense2 = input2
+        for l in args.decoder_layers:
+           dense2 = tf.keras.layers.Dense(l,activation='relu')(dense2)
         # - applies output dense layer with MNIST.H * MNIST.W * MNIST.C units
         #   and a suitable output activation
-        # - reshapes the output (tf.keras.layers.Reshape) to [MNIST.H, MNIST.W, MNISt.C]
+        output2 = tf.keras.layers.Dense(MNIST.H * MNIST.W * MNIST.C,
+                activation='relu')(dense2)
+        # - reshapes the output (tf.keras.layers.Reshape) to [MNIST.H, MNIST.W,
+        # MNISt.C]
+        output2 = tf.keras.layers.Reshape([MNIST.H, MNIST.W, MNIST.C])(output2)
+        self.decoder = tf.keras.Model(inputs=[input2], outputs=[output2])
 
         self._optimizer = tf.optimizers.Adam()
         self._reconstruction_loss_fn = tf.losses.BinaryCrossentropy()
@@ -39,21 +58,28 @@ class Network:
     def train_batch(self, images):
         with tf.GradientTape() as tape:
             # TODO: Compute z_mean and z_log_variance of given images using `self.encoder`; do not forget about `training=True`.
-
-            # TODO: Sample `z` from a Normal distribution with mean `z_mean` and variance `exp(z_log_variance)`.
+            z_mean, z_log_variance = self.encoder(images, training=True)
+            # TODO: Sample `z` from a Normal distribution with mean `z_mean` and variance `xp(z_log_variance)`.
             # Use `tf.random.normal` and **pass argument `seed=42`**.
-
+            z = tf.random.normal(z_mean.shape, mean=z_mean,
+                    stddev=tf.exp(z_log_variance))
             # TODO: Decode images using `z`.
-
+            decoded = self.decoder(z)
             # TODO: Define `reconstruction_loss` using self._reconstruction_loss_fn
+            reconstruction_loss = self._reconstruction_loss_fn(images, decoded)
             # TODO: Define `latent_loss` as a mean of KL divergences of suitable distributions.
+            # Standard normal distribution vs. my self.z_mean and
+            #np.exp(z_log_variance)
+            latent_loss = self._kl_divergence(tf.zeros(z_mean.shape),
+                    tf.ones(z_log_variance.shape), z_mean, tf.exp(z_log_variance))
             # TODO: Define `loss` as a weighted sum of the reconstruction_loss (weighted by the number
             # of pixels in one image) and the latent_loss (weighted by self._z_dim).
-            pass
+            loss = np.prod(images.shape[1:]) * reconstruction_loss +
+            self._z_dim * latent_loss
         # TODO: Compute gradients with respect to trainable variables of the encoder and the decoder.
         # TODO: Apply the gradients to encoder and decoder trainable variables.
 
-        tf.summary.experimental.set_step(self._optimizer.iterations)
+        tnmf.summary.experimental.set_step(self._optimizer.iterations)
         with self._writer.as_default():
             tf.summary.scalar("vae/reconstruction_loss", reconstruction_loss)
             tf.summary.scalar("vae/latent_loss", latent_loss)
