@@ -73,11 +73,12 @@ class Network:
             latent_loss = self._kl_divergence(tf.zeros(z_mean.shape),
                     tf.ones(z_log_variance.shape), z_mean, tf.exp(z_log_variance))
             # TODO: Define `loss` as a weighted sum of the reconstruction_loss (weighted by the number
-            # of pixels in one image) and the latent_loss (weighted by self._z_dim).
+            # of pixels in one image) and the latent_loss (weighted by self._z_dim). Note that
+            # the `loss` should be weighted sum, not weighted average.
             loss = np.prod(images.shape[1:]) * reconstruction_loss +
             self._z_dim * latent_loss
         # TODO: Compute gradients with respect to trainable variables of the encoder and the decoder.
-        # TODO: Apply the gradients to encoder and decoder trainable variables.
+        # TODO: Apply the gradients to encoder and decoder trainable variables (in one update).
 
         tnmf.summary.experimental.set_step(self._optimizer.iterations)
         with self._writer.as_default():
