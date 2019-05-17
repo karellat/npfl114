@@ -8,10 +8,11 @@ from mnist import MNIST
 class Network:
     def __init__(self, args):
         self._z_dim = args.z_dim
+        self._batch_size = args.batch_size
 
         # TODO: Define `self.generator` as a Model, which
         # - takes vectors of [args.z_dim] shape on input
-        input = tf.keras.layers.Input(shape=[args.z_dim])
+        input = tf.keras.layers.Input(shape=[args.z_dim], batch_size=args.batch_size)
         # - applies len(args.generator_layers) dense layers with ReLU activation,
         #   i-th layer with args.generator_layers[i] units
         dense = input
@@ -22,12 +23,11 @@ class Network:
         output = tf.keras.layers.Dense(MNIST.H * MNIST.W * MNIST.C, activation='sigmoid')(dense)
         # - reshapes the output (tf.keras.layers.Reshape) to [MNIST.H, MNIST.W, MNISt.C]
         output = tf.keras.layers.Reshape((MNIST.H, MNIST.W, MNIST.C))(output)
-
         self.generator = tf.keras.Model(inputs=[input], outputs=[output])
 
         # TODO: Define `self.discriminator` as a Model, which
         # - takes input images with shape [MNIST.H, MNIST.W, MNIST.C]
-        input = tf.keras.layers.Input(shape=[MNIST.H, MNIST.W, MNIST.C])
+        input = tf.keras.layers.Input(shape=[MNIST.H, MNIST.W, MNIST.C], batch_size=args.batch_size)
         # - flattens them
         dense = tf.keras.layers.Flatten()(input)
         # - applies len(args.discriminator_layers) dense layers with ReLU activation,
@@ -36,7 +36,9 @@ class Network:
             dense = tf.keras.layers.Dense(args.discriminator_layers[i], activation='relu')(dense)
 
         # - applies output dense layer with one output and a suitable activation function
-        output = tf.keras.layers.Dense(1, activation='linear')
+        # TODO: Activation!?
+        output = tf.keras.layers.Dense(1, activation='sigmoid')(dense)
+        self.discriminator = tf.keras.Model(inputs=[input], outputs=[output])
 
         self._generator_optimizer, self._discriminator_optimizer = tf.optimizers.Adam(), tf.optimizers.Adam()
         self._loss_fn = tf.losses.BinaryCrossentropy()
@@ -52,23 +54,34 @@ class Network:
         # TODO: Generator training. Using a Gradient tape:
         with tf.GradientTape() as tape:
             # - generate random images using a `generator`; do not forget about `training=True`
-            gen_logits = self.generator(images, training=True)
+            # TODO: Dimensions!?
+            gen_logits = self.generator(self._sample_z(self._batch_size), training=True)
             # - run discriminator on the generated images, also using `training=True` (even if
             #   not updating discriminator parameters, we want to perform possible BatchNorm in it)
-            dis_logits = self.discriminator(images, training=True)
+            dis_logits = self.discriminator(gen_logits, training=True)
             # - compute loss using `_loss_fn`, with target labels `tf.ones_like(discriminator_output)`
-            loss_value = self._loss_fn(tf.ones_like(dis_logits), gen_logits)
+            generator_loss = self._loss_fn(tf.ones_like(dis_logits), dis_logits)
         # Then, compute the gradients with respect to generator trainable variables and update
         # generator trainable weights using self._generator_optimizer.
+        grad = tape.gradient(generator_loss, self.generator.trainable_variables)
+        self._generator_optimizer.apply_gradients(zip(grad, self.generator.trainable_variables))
 
         # TODO: Discriminator training. Using a Gradient tape:
-        # - discriminate `images`, storing results in `discriminated_real`
-        # - discriminate images generated in generator training, storing results in `discriminated_fake`
-        # - compute loss by summing
-        #   - `_loss_fn` on discriminated_real with suitable target labes
-        #   - `_loss_fn` on discriminated_fake with suitable targets (`tf.{ones,zeros}_like` come handy).
+        with tf.GradientTape() as tape:
+            # - discriminate `images`, storing results in `discriminated_real`
+            discriminated_real = self.discriminator(images, training=True)
+            # - discriminate images generated in generator training, storing results in `discriminated_fake`
+            discriminated_fake = self.discriminator(gen_logits, training=True)
+            # - compute loss by summing
+            #   - `_loss_fn` on discriminated_real with suitable target labes
+            #   - `_loss_fn` on discriminated_fake with suitable targets (`tf.{ones,zeros}_like` come handy).
+            # TODO: Labels!?
+            discriminator_loss = self._loss_fn(tf.ones_like(discriminated_real), discriminated_real)
+            discriminator_loss += self._loss_fn(tf.zeros_like(discriminated_fake), discriminated_fake)
         # Then, compute the gradients with respect to discriminator trainable variables and update
         # discriminator trainable weights using self._discriminator_optimizer.
+        grad = tape.gradient(discriminator_loss, self.discriminator.trainable_variables)
+        self._discriminator_optimizer.apply_gradients(zip(grad, self.discriminator.trainable_variables))
 
         self._discriminator_accuracy(tf.greater(discriminated_real, 0.5))
         self._discriminator_accuracy(tf.less(discriminated_fake, 0.5))
@@ -102,7 +115,10 @@ class Network:
     def train_epoch(self, dataset, args):
         self._discriminator_accuracy.reset_states()
         loss = 0
+        b = 0
         for batch in dataset.batches(args.batch_size):
+            b += 1
+            print('Batch {}'.format(b))
             loss += self.train_batch(batch["images"])
         self.generate()
         return loss
@@ -151,6 +167,7 @@ if __name__ == "__main__":
     # Create the network and train
     network = Network(args)
     for epoch in range(args.epochs):
+        print('Epoch {}'.format(epoch+1))
         loss = network.train_epoch(mnist.train, args)
 
     with open("gan.out", "w") as out_file:
