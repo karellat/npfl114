@@ -11,18 +11,32 @@ class Network:
 
         # TODO: Define `self.generator` as a Model, which
         # - takes vectors of [args.z_dim] shape on input
+        input = tf.keras.layers.Input(shape=[args.z_dim])
         # - applies len(args.generator_layers) dense layers with ReLU activation,
         #   i-th layer with args.generator_layers[i] units
+        dense = input
+        for i in range(len(args.generator_layers)):
+            dense = tf.keras.layers.Dense(args.generator_layers[i], activation='relu')(dense)
         # - applies output dense layer with MNIST.H * MNIST.W * MNIST.C units
         #   and sigmoid activation
+        output = tf.keras.layers.Dense(MNIST.H * MNIST.W * MNIST.C, activation='sigmoid')(dense)
         # - reshapes the output (tf.keras.layers.Reshape) to [MNIST.H, MNIST.W, MNISt.C]
+        output = tf.keras.layers.Reshape((MNIST.H, MNIST.W, MNIST.C))(output)
+
+        self.generator = tf.keras.Model(inputs=[input], outputs=[output])
 
         # TODO: Define `self.discriminator` as a Model, which
         # - takes input images with shape [MNIST.H, MNIST.W, MNIST.C]
+        input = tf.keras.layers.Input(shape=[MNIST.H, MNIST.W, MNIST.C])
         # - flattens them
+        dense = tf.keras.layers.Flatten()(input)
         # - applies len(args.discriminator_layers) dense layers with ReLU activation,
         #   i-th layer with args.discriminator_layers[i] units
+        for i in range(len(args.discriminator_layers)):
+            dense = tf.keras.layers.Dense(args.discriminator_layers[i], activation='relu')(dense)
+
         # - applies output dense layer with one output and a suitable activation function
+        output = tf.keras.layers.Dense(1, activation='linear')
 
         self._generator_optimizer, self._discriminator_optimizer = tf.optimizers.Adam(), tf.optimizers.Adam()
         self._loss_fn = tf.losses.BinaryCrossentropy()
@@ -36,10 +50,14 @@ class Network:
     @tf.function
     def train_batch(self, images):
         # TODO: Generator training. Using a Gradient tape:
-        # - generate random images using a `generator`; do not forget about `training=True`
-        # - run discriminator on the generated images, also using `training=True` (even if
-        #   not updating discriminator parameters, we want to perform possible BatchNorm in it)
-        # - compute loss using `_loss_fn`, with target labels `tf.ones_like(discriminator_output)`
+        with tf.GradientTape() as tape:
+            # - generate random images using a `generator`; do not forget about `training=True`
+            gen_logits = self.generator(images, training=True)
+            # - run discriminator on the generated images, also using `training=True` (even if
+            #   not updating discriminator parameters, we want to perform possible BatchNorm in it)
+            dis_logits = self.discriminator(images, training=True)
+            # - compute loss using `_loss_fn`, with target labels `tf.ones_like(discriminator_output)`
+            loss_value = self._loss_fn(tf.ones_like(dis_logits), gen_logits)
         # Then, compute the gradients with respect to generator trainable variables and update
         # generator trainable weights using self._generator_optimizer.
 
