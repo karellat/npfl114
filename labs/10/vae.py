@@ -38,7 +38,7 @@ class Network:
         # - applies output dense layer with MNIST.H * MNIST.W * MNIST.C units
         #   and a suitable output activation
         output2 = tf.keras.layers.Dense(MNIST.H * MNIST.W * MNIST.C,
-                activation='relu')(dense2)
+                activation='sigmoid')(dense2)
         # - reshapes the output (tf.keras.layers.Reshape) to [MNIST.H, MNIST.W,
         # MNISt.C]
         output2 = tf.keras.layers.Reshape([MNIST.H, MNIST.W, MNIST.C])(output2)
@@ -61,33 +61,31 @@ class Network:
             z_mean, z_log_variance = self.encoder(images, training=True)
             # TODO: Sample `z` from a Normal distribution with mean `z_mean` and variance `xp(z_log_variance)`.
             # Use `tf.random.normal` and **pass argument `seed=42`**.
-            z = tf.random.normal(z_mean.shape, mean=z_mean,
-                    stddev=tf.exp(z_log_variance))
+            z_std = tf.exp(z_log_variance / 2)
+            z = tf.random.normal(z_mean.shape, mean=z_mean, stddev=z_std,seed=42)
             # TODO: Decode images using `z`.
             decoded = self.decoder(z)
             # TODO: Define `reconstruction_loss` using self._reconstruction_loss_fn
             reconstruction_loss = self._reconstruction_loss_fn(images, decoded)
             # TODO: Define `latent_loss` as a mean of KL divergences of suitable distributions.
             # Standard normal distribution vs. my self.z_mean and
-            #np.exp(z_log_variance)
-            latent_loss = self._kl_divergence(tf.zeros(z_mean.shape),
-                    tf.ones(z_log_variance.shape), z_mean, tf.exp(z_log_variance))
+            latent_loss = tf.reduce_mean(self._kl_divergence(z_mean,
+                    z_std,tf.zeros(z_mean.shape), tf.ones(z_std.shape)))
             # TODO: Define `loss` as a weighted sum of the reconstruction_loss (weighted by the number
             # of pixels in one image) and the latent_loss (weighted by self._z_dim). Note that
             # the `loss` should be weighted sum, not weighted average.
-            loss = np.prod(images.shape[1:]) * reconstruction_loss + self._z_dim * latent_loss
+            loss = np.prod(images.shape[1] * images.shape[2]) * reconstruction_loss + self._z_dim * latent_loss
         # TODO: Compute gradients with respect to trainable variables of the
         # encoder and the decoder.
-        gradients = tape.gradient(loss,[self.decoder.variables, self.encoder.variables])
+        variables = self.decoder.trainable_variables + self.encoder.trainable_variables
+        gradients = tape.gradient(loss, variables)
         # TODO: Apply the gradients to encoder and decoder trainable variables (in one update).
-        self._optimizer.apply_gradients(zip(gradients, [self.decoder.variables, self.encoder.variables]))
-
+        self._optimizer.apply_gradients(zip(gradients, variables))
         tf.summary.experimental.set_step(self._optimizer.iterations)
         with self._writer.as_default():
             tf.summary.scalar("vae/reconstruction_loss", reconstruction_loss)
             tf.summary.scalar("vae/latent_loss", latent_loss)
             tf.summary.scalar("vae/loss", loss)
-
         return loss
 
     def generate(self):
@@ -123,6 +121,7 @@ class Network:
         loss = 0
         for batch in dataset.batches(args.batch_size):
             loss += self.train_batch(batch["images"])
+        #print(loss)
         self.generate()
         return loss
 
