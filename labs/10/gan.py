@@ -8,6 +8,7 @@ from mnist import MNIST
 class Network:
     def __init__(self, args):
         self._z_dim = args.z_dim
+        self._batch_size = args.batch_size
 
         # TODO: Define `self.generator` as a Model, which
         # - takes vectors of [args.z_dim] shape on input
@@ -24,6 +25,7 @@ class Network:
         # - reshapes the output (tf.keras.layers.Reshape) to [MNIST.H, MNIST.W, MNISt.C]
         output1 = tf.keras.layers.Reshape([MNIST.H, MNIST.W, MNIST.C])(output1)
 
+
         self.generator = tf.keras.Model(inputs=[input1], outputs=[output1])
         # TODO: Define `self.discriminator` as a Model, which
         # - takes input images with shape [MNIST.H, MNIST.W, MNIST.C]
@@ -36,9 +38,11 @@ class Network:
         for l in args.generator_layers:
             dense2 = tf.keras.layers.Dense(l, activation='relu')(dense2)
         # - applies output dense layer with one output and a suitable activation function
+
         output2 = tf.keras.layers.Dense(1, activation='sigmoid')(dense2)
         # TODO: Define `self.discriminator` as a Model, which
         self.discriminator = tf.keras.Model(inputs=[input2], outputs=[output2])
+
 
         self._generator_optimizer, self._discriminator_optimizer = tf.optimizers.Adam(), tf.optimizers.Adam()
         self._loss_fn = tf.losses.BinaryCrossentropy()
@@ -53,6 +57,7 @@ class Network:
     def train_batch(self, images):
         # TODO: Generator training. Using a Gradient tape:
         with tf.GradientTape() as tape:
+
         # - generate random images using a `generator`; do not forget about `training=True` where appropriate
             gen_images = self.generator(self._sample_z(images.shape[0]), training=True)
         # - run discriminator on the generated images, also using `training=True` (even if
@@ -61,6 +66,7 @@ class Network:
         # - compute loss using `_loss_fn`, with target labels `tf.ones_like(discriminator_output)`
             generator_loss = self._loss_fn(tf.ones_like(disc_gen_images),
                disc_gen_images)
+
         # Then, compute the gradients with respect to generator trainable variables and update
         gradients = tape.gradient(generator_loss, self.generator.variables)
         # generator trainable weights using self._generator_optimizer.
@@ -85,6 +91,7 @@ class Network:
         gradients = tape.gradient(discriminator_loss, self.discriminator.variables)
         # discriminator trainable weights using self._discriminator_optimizer.
         self._discriminator_optimizer.apply_gradients(zip(gradients, self.discriminator.variables))
+
 
         self._discriminator_accuracy(tf.greater(discriminated_real, 0.5))
         self._discriminator_accuracy(tf.less(discriminated_fake, 0.5))
@@ -118,7 +125,10 @@ class Network:
     def train_epoch(self, dataset, args):
         self._discriminator_accuracy.reset_states()
         loss = 0
+        b = 0
         for batch in dataset.batches(args.batch_size):
+            b += 1
+            print('Batch {}'.format(b))
             loss += self.train_batch(batch["images"])
         self.generate()
         return loss
@@ -167,6 +177,7 @@ if __name__ == "__main__":
     # Create the network and train
     network = Network(args)
     for epoch in range(args.epochs):
+        print('Epoch {}'.format(epoch+1))
         loss = network.train_epoch(mnist.train, args)
 
     with open("gan.out", "w") as out_file:
