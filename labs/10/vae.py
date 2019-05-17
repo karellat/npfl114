@@ -75,12 +75,14 @@ class Network:
             # TODO: Define `loss` as a weighted sum of the reconstruction_loss (weighted by the number
             # of pixels in one image) and the latent_loss (weighted by self._z_dim). Note that
             # the `loss` should be weighted sum, not weighted average.
-            loss = np.prod(images.shape[1:]) * reconstruction_loss +
-            self._z_dim * latent_loss
-        # TODO: Compute gradients with respect to trainable variables of the encoder and the decoder.
+            loss = np.prod(images.shape[1:]) * reconstruction_loss + self._z_dim * latent_loss
+        # TODO: Compute gradients with respect to trainable variables of the
+        # encoder and the decoder.
+        gradients = tape.gradient(loss,[self.decoder.variables, self.encoder.variables])
         # TODO: Apply the gradients to encoder and decoder trainable variables (in one update).
+        self._optimizer.apply_gradients(zip(gradients, [self.decoder.variables, self.encoder.variables]))
 
-        tnmf.summary.experimental.set_step(self._optimizer.iterations)
+        tf.summary.experimental.set_step(self._optimizer.iterations)
         with self._writer.as_default():
             tf.summary.scalar("vae/reconstruction_loss", reconstruction_loss)
             tf.summary.scalar("vae/latent_loss", latent_loss)
