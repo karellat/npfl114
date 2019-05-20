@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+#
+# All team solutions **must** list **all** members of the team.
+# The members must be listed using their ReCodEx IDs anywhere
+# in a comment block in the source file (on a line beginning with `#`).
+#
+# You can find out ReCodEx ID in the URL bar after navigating
+# to your User profile page. The ID has the following format:
+# 310a5c89-3ea1-11e9-b0fd-00505601122b
+# 90257956-3ea2-11e9-b0fd-00505601122b
+# 69bef76d-1ebb-11e8-9de3-00505601122b
 import numpy as np
 import tensorflow as tf
 
@@ -15,28 +25,38 @@ class Network:
         # methods.
         #
         # Use Adam optimizer with given `args.learning_rate`.
-        raise NotImplementedError()
+        self.model = tf.keras.Sequential()
+        self.model.add(tf.keras.layers.Input(shape=(4,)))
+        self.model.add(tf.keras.layers.Dense(args.hidden_layer, activation='relu'))
+        self.model.add(tf.keras.layers.Dense(env.actions, activation='softmax'))
+
+        self.model.compile(
+            optimizer=tf.keras.optimizers.Adam(learning_rate=args.learning_rate),
+            loss=tf.keras.losses.SparseCategoricalCrossentropy(),
+            metrics=[
+                tf.keras.metrics.SparseCategoricalAccuracy()
+            ]
+        )
 
     def train(self, states, actions, returns):
         states, actions, returns = np.array(states), np.array(actions), np.array(returns)
 
         # TODO: Train the model using the states, actions and observed returns.
-        raise NotImplementedError()
+        self.model.train_on_batch(states, actions, sample_weight=returns)
 
     def predict(self, states):
         states = np.array(states)
 
         # TODO: Predict distribution over actions for the given input states
-        raise NotImplementedError()
-
+        return self.model.predict_on_batch(states)
 
 if __name__ == "__main__":
     # Parse arguments
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch_size", default=None, type=int, help="Number of episodes to train on.")
-    parser.add_argument("--episodes", default=None, type=int, help="Training episodes.")
-    parser.add_argument("--hidden_layer", default=None, type=int, help="Size of hidden layer.")
+    parser.add_argument("--batch_size", default=10, type=int, help="Number of episodes to train on.")
+    parser.add_argument("--episodes", default=700, type=int, help="Training episodes.")
+    parser.add_argument("--hidden_layer", default=16, type=int, help="Size of hidden layer.")
     parser.add_argument("--learning_rate", default=0.01, type=float, help="Learning rate.")
     parser.add_argument("--render_each", default=0, type=int, help="Render some episodes.")
     parser.add_argument("--threads", default=1, type=int, help="Maximum number of threads to use.")
@@ -68,6 +88,7 @@ if __name__ == "__main__":
                 probabilities = network.predict([state])[0]
                 # TODO: Compute `action` according to the distribution returned by the network.
                 # The `np.random.choice` method comes handy.
+                action = np.random.choice(env.actions, p=probabilities)
 
                 next_state, reward, done, _ = env.step(action)
 
@@ -78,6 +99,11 @@ if __name__ == "__main__":
                 state = next_state
 
             # TODO: Compute `returns` from the observed `rewards`.
+            returns = [0]
+            for reward in reversed(rewards):
+                returns.append(reward + returns[-1])
+            returns = list(reversed(returns))
+            returns.pop()
 
             batch_states += states
             batch_actions += actions
